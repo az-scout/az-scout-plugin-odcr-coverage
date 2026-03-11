@@ -1,0 +1,284 @@
+/* ODCR Coverage Plugin Styles */
+
+.odcr-coverage-container {}
+
+/* ---- Sidebar ---- */
+.odcr-sidebar {
+    position: sticky;
+    top: 1rem;
+}
+.odcr-sub-checklist {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    padding: 0.25rem;
+}
+.odcr-sub-checklist label {
+    display: block;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.2rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.odcr-sub-checklist label:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+/* ---- Summary Cards ---- */
+.odcr-summary-card {
+    background: var(--bs-tertiary-bg);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    text-align: center;
+    border-left: 4px solid var(--bs-secondary);
+    transition: transform 0.15s;
+}
+.odcr-summary-card:hover { transform: translateY(-2px); }
+.odcr-summary-card .odcr-card-value {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.odcr-summary-card .odcr-card-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--bs-secondary-color);
+    margin-top: 0.25rem;
+}
+.odcr-summary-card.card-total { border-left-color: var(--bs-primary); }
+.odcr-summary-card.card-total .odcr-card-value { color: var(--bs-primary); }
+.odcr-summary-card.card-covered { border-left-color: #198754; }
+.odcr-summary-card.card-covered .odcr-card-value { color: #198754; }
+.odcr-summary-card.card-critical { border-left-color: #dc3545; }
+.odcr-summary-card.card-critical .odcr-card-value { color: #dc3545; }
+.odcr-summary-card.card-high { border-left-color: #fd7e14; }
+.odcr-summary-card.card-high .odcr-card-value { color: #fd7e14; }
+.odcr-summary-card.card-medium { border-left-color: #ffc107; }
+.odcr-summary-card.card-medium .odcr-card-value { color: #ffc107; }
+.odcr-summary-card.card-low { border-left-color: var(--bs-secondary); }
+.odcr-summary-card.card-failures { border-left-color: #dc3545; }
+.odcr-summary-card.card-failures .odcr-card-value { color: #dc3545; }
+
+/* ---- Risk Distribution Bar ---- */
+.odcr-risk-bar {
+    display: flex;
+    height: 28px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--bs-tertiary-bg);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+}
+.odcr-risk-bar .risk-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    min-width: 0;
+    transition: flex 0.4s ease;
+    overflow: hidden;
+    white-space: nowrap;
+}
+.odcr-risk-bar .risk-critical { background: #dc3545; }
+.odcr-risk-bar .risk-high { background: #fd7e14; }
+.odcr-risk-bar .risk-medium { background: #ffc107; color: #333; }
+.odcr-risk-bar .risk-low { background: #6c757d; }
+.odcr-risk-bar .risk-covered { background: #198754; }
+
+.odcr-risk-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.75rem;
+}
+.odcr-risk-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.odcr-risk-legend .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ---- ODCR Utilization Cards ---- */
+.odcr-util-card {
+    background: var(--bs-tertiary-bg);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-left: 3px solid #198754;
+}
+.odcr-util-card .util-header {
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+}
+.odcr-util-gauge {
+    height: 8px;
+    border-radius: 4px;
+    background: var(--bs-border-color-translucent);
+    overflow: hidden;
+    margin-bottom: 0.25rem;
+}
+.odcr-util-gauge .gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #198754;
+    transition: width 0.5s ease;
+}
+.odcr-util-gauge .gauge-fill.low-util { background: #ffc107; }
+.odcr-util-gauge .gauge-fill.no-util { background: #dc3545; }
+.odcr-util-meta {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+}
+
+/* ---- Risk Badges ---- */
+.odcr-risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 1rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.odcr-risk-badge.risk-critical { background: #dc354520; color: #dc3545; }
+.odcr-risk-badge.risk-high { background: #fd7e1420; color: #fd7e14; }
+.odcr-risk-badge.risk-medium { background: #ffc10720; color: #b89500; }
+.odcr-risk-badge.risk-low { background: #6c757d20; color: #6c757d; }
+.odcr-risk-badge.risk-covered { background: #19875420; color: #198754; }
+
+.odcr-risk-badge .risk-icon { font-size: 0.75rem; }
+
+/* ---- Uptime spark bar ---- */
+.odcr-uptime-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.odcr-uptime-track {
+    width: 50px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bs-border-color-translucent);
+    overflow: hidden;
+}
+.odcr-uptime-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+.odcr-uptime-fill.high { background: #dc3545; }
+.odcr-uptime-fill.medium { background: #ffc107; }
+.odcr-uptime-fill.low { background: #198754; }
+
+/* ---- Allocation badge ---- */
+.odcr-alloc-badge {
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.odcr-alloc-badge .alloc-fail {
+    color: #dc3545;
+    font-weight: 600;
+}
+
+/* ---- ODCR status icon ---- */
+.odcr-status-icon {
+    font-size: 1rem;
+}
+.odcr-status-icon.protected { color: #198754; }
+.odcr-status-icon.unprotected { color: #dc3545; }
+
+/* ---- Table ---- */
+.odcr-table-wrapper {
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+.odcr-table-wrapper thead { position: sticky; top: 0; z-index: 1; }
+#odcr-vm-table th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-secondary-color);
+    border-bottom-width: 2px;
+}
+#odcr-vm-table td {
+    font-size: 0.8rem;
+    vertical-align: middle;
+}
+.odcr-vm-row:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+/* ---- Cross-highlight (ODCR card ↔ VM row) ---- */
+.odcr-highlight {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: -1px;
+    background: color-mix(in srgb, var(--bs-primary) 8%, transparent) !important;
+}
+.odcr-util-card.odcr-highlight {
+    border-left-color: var(--bs-primary);
+}
+
+/* ---- ODCR group label in table ---- */
+.odcr-group-label {
+    font-size: 0.75rem;
+    white-space: nowrap;
+    cursor: default;
+}
+
+/* ---- Timeline (modal) ---- */
+.odcr-timeline {
+    max-height: 350px;
+    overflow-y: auto;
+}
+.odcr-timeline-item {
+    display: flex;
+    gap: 0.6rem;
+    align-items: stretch;
+}
+.odcr-timeline-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 1.2rem;
+    flex-shrink: 0;
+}
+.odcr-timeline-rail .rail-line {
+    flex: 1;
+    width: 2px;
+    background: var(--bs-border-color);
+}
+.odcr-timeline-rail .rail-dot {
+    font-size: 0.9rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.odcr-timeline-item:first-child .rail-line:first-child { visibility: hidden; }
+.odcr-timeline-item:last-child .rail-line:last-child { visibility: hidden; }
+.odcr-timeline-content {
+    font-size: 0.85rem;
+    padding: 0.25rem 0 0.5rem;
+}
+
+/* ---- Progress bar ---- */
+
+/* ---- Dark mode overrides ---- */
+[data-theme="dark"] .odcr-risk-badge.risk-medium { color: #ffc107; }
+[data-theme="dark"] .odcr-summary-card.card-medium .odcr-card-value { color: #ffc107; }

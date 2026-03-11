@@ -1,0 +1,146 @@
+<div class="odcr-coverage-container">
+    <p class="text-body-secondary small mb-3">
+        <i class="bi bi-info-circle text-info"></i>
+        <strong>ODCR</strong> (On-Demand Capacity Reservation) guarantees VM allocation in a specific region and zone.
+        VMs without ODCR may fail to start during high-demand periods.
+        <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/capacity-reservation-overview" target="_blank" rel="noopener">Learn more <i class="bi bi-box-arrow-up-right"></i></a>
+    </p>
+    <div class="row">
+        <!-- Left sidebar: subscriptions -->
+        <div class="col-md-3 col-xl-2">
+            <div class="odcr-sidebar">
+                <label class="form-label form-label-sm mb-1">
+                    <i class="bi bi-collection"></i> Subscriptions
+                </label>
+                <div class="input-group input-group-sm mb-1">
+                    <input type="search" class="form-control" id="odcr-sub-filter"
+                           placeholder="Filter…" autocomplete="off" spellcheck="false">
+                    <button type="button" class="btn btn-outline-secondary" id="odcr-select-all" title="Select visible">
+                        <i class="bi bi-check-all"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="odcr-deselect-all" title="Clear all">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div id="odcr-sub-list" class="odcr-sub-checklist"></div>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-body-secondary" id="odcr-sub-count">0 selected</small>
+                </div>
+                <div class="mt-2">
+                    <label class="form-label form-label-sm mb-1" for="odcr-lookback">
+                        <i class="bi bi-clock-history"></i> Lookback
+                    </label>
+                    <select class="form-select form-select-sm" id="odcr-lookback">
+                        <option value="3">3 days</option>
+                        <option value="7" selected>7 days</option>
+                        <option value="14">14 days</option>
+                        <option value="30">30 days</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm w-100 mt-2" id="odcr-analyze-btn" disabled>
+                    <i class="bi bi-shield-check"></i> Analyze
+                </button>
+            </div>
+        </div>
+
+        <!-- Right: results -->
+        <div class="col-md-9 col-xl-10">
+            <!-- Progress bar -->
+            <div id="odcr-progress" class="mb-3" style="display:none">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <small class="text-body-secondary" id="odcr-progress-label">Analysing…</small>
+                </div>
+                <div class="progress" style="height:6px">
+                    <div class="progress-bar" id="odcr-progress-bar"
+                         role="progressbar" style="width:0%"></div>
+                </div>
+            </div>
+
+    <!-- Empty state -->
+    <div id="odcr-empty" class="text-center py-5">
+        <i class="bi bi-shield-exclamation" style="font-size:3rem;color:var(--bs-secondary)"></i>
+        <p class="text-body-secondary mt-2">Select a subscription and click <strong>Analyze</strong> to check ODCR coverage.</p>
+    </div>
+
+    <!-- Results -->
+    <div id="odcr-results" style="display:none">
+        <!-- Summary cards row -->
+        <div class="row g-3 mb-4" id="odcr-summary-cards"></div>
+
+        <!-- ODCR utilization -->
+        <div class="mb-4" id="odcr-utilization-section" style="display:none">
+            <h6 class="text-body-secondary mb-2"><i class="bi bi-database-check"></i> Capacity Reservations</h6>
+            <div id="odcr-utilization-cards" class="row g-3"></div>
+        </div>
+
+        <!-- Risk distribution gauge -->
+        <div class="mb-4">
+            <h6 class="text-body-secondary mb-2"><i class="bi bi-speedometer2"></i> Risk Distribution</h6>
+            <div id="odcr-risk-bar" class="odcr-risk-bar"></div>
+            <div id="odcr-risk-legend" class="odcr-risk-legend mt-2"></div>
+        </div>
+
+        <!-- VM table -->
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <h6 class="text-body-secondary mb-0"><i class="bi bi-list-check"></i> VM Details</h6>
+            <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm" id="odcr-risk-filter" style="width:auto">
+                    <option value="">All risks</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="covered">Covered</option>
+                </select>
+                <button class="btn btn-outline-secondary btn-sm" id="odcr-export-csv" title="Export CSV">
+                    <i class="bi bi-download"></i> CSV
+                </button>
+            </div>
+        </div>
+        <div class="odcr-table-wrapper">
+            <table class="table table-sm table-hover" id="odcr-vm-table">
+                <thead>
+                    <tr>
+                        <th>Risk</th>
+                        <th>VM Name</th>
+                        <th>Subscription</th>
+                        <th>RG</th>
+                        <th>Size</th>
+                        <th>Zone</th>
+                        <th>State</th>
+                        <th>Uptime</th>
+                        <th>Alloc</th>
+                        <th>ODCR</th>
+                        <th>Reason</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="odcr-vm-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="odcr-error" class="alert alert-danger" style="display:none"></div>
+        </div><!-- /col results -->
+    </div><!-- /row -->
+
+    <!-- VM Detail Modal -->
+    <div class="modal fade" id="odcr-vm-modal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="odcr-vm-modal-title">VM Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="odcr-vm-modal-body"></div>
+                <div class="modal-footer">
+                    <a href="#" id="odcr-vm-modal-portal" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-box-arrow-up-right"></i> Open in Azure Portal
+                    </a>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
