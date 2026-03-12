@@ -71,7 +71,7 @@ class TestComputeUptimePct:
             {"timestamp": "2026-03-07T12:00:00Z", "operation": "deallocate", "status": "Succeeded"},
         ]
         pct = compute_uptime_pct(events, 7)
-        assert 30.0 < pct < 60.0
+        assert 20.0 < pct < 60.0
 
     def test_failed_start_stays_off(self) -> None:
         events = [

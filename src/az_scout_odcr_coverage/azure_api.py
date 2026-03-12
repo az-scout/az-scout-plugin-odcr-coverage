@@ -12,13 +12,14 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from az_scout.azure_api import ArmRequestError, arm_paginate
+from az_scout.azure_api import ArmRequestError, arm_paginate, arm_post
 
 logger = logging.getLogger(__name__)
 
 AZURE_MGMT_URL = "https://management.azure.com"
 COMPUTE_API = "2024-03-01"
 ACTIVITY_LOG_API = "2015-04-01"
+ARG_API = "2021-03-01"
 
 # ---------------------------------------------------------------------------
 # Simple in-memory cache with TTL
@@ -65,6 +66,89 @@ _ALLOCATION_ERROR_CODES = {
     "AllocationTimedOut",
 }
 
+_ARG_VM_QUERY = (
+    "resources"
+    " | where type =~ 'microsoft.compute/virtualmachines'"
+    " | extend powerState = tostring(properties.extended.instanceView.powerState.code)"
+    " | extend vmSize = tostring(properties.hardwareProfile.vmSize)"
+    " | extend crGroupId = tostring(properties.capacityReservation.capacityReservationGroup.id)"
+    " | extend zone = tostring(zones[0])"
+    " | project id, name, location, resourceGroup, vmSize, zone, powerState, crGroupId"
+)
+
+
+def _list_vms_arg(
+    subscription_id: str,
+    *,
+    region: str | None = None,
+    tenant_id: str | None = None,
+) -> list[dict[str, Any]] | None:
+    """List VMs with power state via a single Azure Resource Graph query.
+
+    Returns None if ARG call fails (caller should fall back to ARM).
+    """
+    query = _ARG_VM_QUERY
+    if region:
+        query += f" | where location =~ '{region}'"
+
+    url = f"{AZURE_MGMT_URL}/providers/Microsoft.ResourceGraph/resources?api-version={ARG_API}"
+    body: dict[str, Any] = {
+        "subscriptions": [subscription_id],
+        "query": query,
+    }
+
+    try:
+        all_rows: list[dict[str, Any]] = []
+        skip_token: str | None = None
+        while True:
+            if skip_token:
+                body["options"] = {"$skipToken": skip_token}
+            result = arm_post(url, json=body, tenant_id=tenant_id)
+            rows = result.get("data", [])
+            all_rows.extend(rows)
+            skip_token = result.get("$skipToken")
+            if not skip_token:
+                break
+
+        vms: list[dict[str, Any]] = []
+        for row in all_rows:
+            raw_state = row.get("powerState", "")
+            if raw_state.startswith("PowerState/"):
+                power_state = raw_state.split("/", 1)[1]
+            elif raw_state:
+                power_state = raw_state
+            else:
+                power_state = "unknown"
+
+            cr_group_id = row.get("crGroupId") or None
+            if cr_group_id == "":
+                cr_group_id = None
+
+            vms.append(
+                {
+                    "name": row.get("name", ""),
+                    "id": row.get("id", ""),
+                    "resource_group": row.get("resourceGroup", ""),
+                    "vm_size": row.get("vmSize", ""),
+                    "location": row.get("location", "").lower().replace(" ", ""),
+                    "zone": row.get("zone") or None,
+                    "power_state": power_state,
+                    "odcr_group_id": cr_group_id,
+                    "has_odcr": cr_group_id is not None,
+                }
+            )
+
+        logger.info(
+            "list_vms (ARG): %d VMs in %s (region=%s)",
+            len(vms),
+            subscription_id[:8],
+            region or "all",
+        )
+        return vms
+    except Exception as exc:
+        logger.warning("ARG VM query failed (%s), falling back to ARM list", exc)
+        return None
+
 
 def list_vms(
     subscription_id: str,
@@ -72,17 +156,23 @@ def list_vms(
     region: str | None = None,
     tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List VMs with capacity reservation info.
+    """List VMs with capacity reservation info and power state.
 
-    Returns a list of VM records with normalized fields.
-    Power state is derived from allocation events rather than instanceView
-    to avoid the $expand=instanceView limitation on list endpoints.
+    Uses Azure Resource Graph (single query) for accurate power state and
+    region filtering. Falls back to ARM list endpoint if ARG is unavailable.
     """
     cache_key = f"vms:{subscription_id}:{region or ''}"
     hit = _cached(cache_key, _CACHE_TTL_VM)
     if hit is not None:
         return hit  # type: ignore[no-any-return]
 
+    # Primary path: single ARG query
+    vms = _list_vms_arg(subscription_id, region=region, tenant_id=tenant_id)
+    if vms is not None:
+        _cache_set(cache_key, vms)
+        return vms
+
+    # Fallback: ARM list endpoint (no power state)
     url = (
         f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}"
         f"/providers/Microsoft.Compute/virtualMachines"
@@ -90,7 +180,7 @@ def list_vms(
     )
     raw_vms = arm_paginate(url, tenant_id=tenant_id)
 
-    vms: list[dict[str, Any]] = []
+    vms_fallback: list[dict[str, Any]] = []
     for vm in raw_vms:
         location = vm.get("location", "").lower().replace(" ", "")
         if region and location != region.lower():
@@ -99,8 +189,7 @@ def list_vms(
         props = vm.get("properties", {})
         zones = vm.get("zones", [])
 
-        # Power state — may not be available without instanceView expand.
-        # We'll infer it from allocation events later if missing.
+        # Power state from instanceView (often absent on list endpoints)
         power_state = "unknown"
         for status in props.get("instanceView", {}).get("statuses", []):
             code = status.get("code", "")
@@ -111,7 +200,7 @@ def list_vms(
         cr_group = props.get("capacityReservation", {}).get("capacityReservationGroup", {})
         odcr_group_id = cr_group.get("id") if cr_group else None
 
-        vms.append(
+        vms_fallback.append(
             {
                 "name": vm.get("name", ""),
                 "id": vm.get("id", ""),
@@ -126,13 +215,13 @@ def list_vms(
         )
 
     logger.info(
-        "list_vms: %d VMs in %s (region=%s)",
-        len(vms),
+        "list_vms (ARM fallback): %d VMs in %s (region=%s)",
+        len(vms_fallback),
         subscription_id[:8],
         region or "all",
     )
-    _cache_set(cache_key, vms)
-    return vms
+    _cache_set(cache_key, vms_fallback)
+    return vms_fallback
 
 
 def list_capacity_reservations(
@@ -229,7 +318,13 @@ def get_allocation_events(
         f"?api-version={ACTIVITY_LOG_API}&$filter={odata_filter}"
     )
 
+    t0 = time.monotonic()
     raw_events = arm_paginate(url, tenant_id=tenant_id)
+    logger.debug(
+        "get_allocation_events: Activity Log fetch took %.1fs (%d raw events)",
+        time.monotonic() - t0,
+        len(raw_events),
+    )
 
     # Filter to relevant operations in code
     _op_names = {op.lower() for op in _VM_OPERATIONS}
@@ -308,14 +403,16 @@ def get_allocation_events(
 def compute_uptime_pct(
     events: list[dict[str, Any]],
     lookback_days: int,
+    power_state: str = "unknown",
 ) -> float:
     """Estimate uptime percentage from allocation events.
 
     Assumes the VM was running at the start of the lookback window
-    unless the first event is a 'start'.
+    unless the first event is a 'start'. If no events exist, uses
+    the current power state: running → 100%, otherwise 0%.
     """
     if not events:
-        return 0.0
+        return 100.0 if power_state == "running" else 0.0
 
     now = datetime.now(UTC)
     window_start = now - timedelta(days=lookback_days)

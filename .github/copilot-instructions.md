@@ -9,8 +9,8 @@ This is an **az-scout plugin** that analyses On-Demand Capacity Reservation (ODC
 - **ODCR is region-scoped** — no cross-region reservations
 - **Risk levels**: critical (past allocation failures) > high (always-on, no ODCR) > medium > low > covered
 - **Activity Log `$filter`** does NOT support `operationName` — filter in Python code
-- **VM list API**: avoid `$expand=instanceView` on list endpoints (400 on some subs)
-- **Capacity Reservation Groups API**: avoid `$expand` parameters (400 on some subs) — compute utilization from VM→group association
+- **VM list API**: uses Azure Resource Graph (ARG) for VM listing with power state; falls back to ARM list without `$expand=instanceView` (400/502 on some subs)
+- **Capacity Reservation Groups API**: avoid `$expand` parameters (400 on some subs) — compute utilization from VM→group→zone association
 - **Caching**: VMs (5 min), Capacity Reservations (5 min), Activity Log (10 min)
 
 ## Tech stack

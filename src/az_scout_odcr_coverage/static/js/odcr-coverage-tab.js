@@ -283,19 +283,41 @@
             if (!section || !el) return;
             if (!u.reservations.length) { section.style.display = "none"; return; }
             section.style.display = "block";
-            el.innerHTML = u.reservations.map(r => {
-                const pct = r.capacity > 0 ? Math.round(r.used / r.capacity * 100) : 0;
-                const fillCls = pct === 0 ? "no-util" : pct < 50 ? "low-util" : "";
-                const unusedTag = r.unused > 0
-                    ? ` · <span class="text-warning fw-medium">${r.unused} unused</span>`
-                    : "";
+
+            // Group reservations by ODCR group name
+            const groups = new Map();
+            for (const r of u.reservations) {
+                const key = r.group;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(r);
+            }
+
+            el.innerHTML = Array.from(groups.entries()).map(([groupName, items]) => {
+                const totalUsed = items.reduce((s, r) => s + r.used, 0);
+                const totalCap = items.reduce((s, r) => s + r.capacity, 0);
+                const totalPct = totalCap > 0 ? Math.round(totalUsed / totalCap * 100) : 0;
+                const cardCls = totalPct === 100 ? "full-util" : totalPct === 0 ? "no-util" : "partial-util";
+                const subName = items[0].subscription_name || "";
+
+                const zoneRows = items.map(r => {
+                    const pct = r.capacity > 0 ? Math.round(r.used / r.capacity * 100) : 0;
+                    const fillCls = pct === 100 ? "full-util" : pct === 0 ? "no-util" : "partial-util";
+                    const unusedTag = r.unused > 0
+                        ? ` · <span class="text-warning fw-medium">${r.unused} unused</span>`
+                        : "";
+                    return `
+                        <div class="odcr-zone-row">
+                            <div class="odcr-zone-label">${r.sku} · Zone ${r.zone || "—"}</div>
+                            <div class="odcr-util-gauge"><div class="gauge-fill ${fillCls}" style="width:${pct}%"></div></div>
+                            <div class="odcr-util-meta">${r.used}/${r.capacity} used${unusedTag}</div>
+                        </div>`;
+                }).join("");
+
                 return `
                 <div class="col-6 col-md-4 col-xl-3">
-                    <div class="odcr-util-card odcr-highlight-target" data-odcr-group="${r.group}">
-                        <div class="util-header">${r.sku} · Zone ${r.zone || "—"}</div>
-                        <div class="odcr-util-gauge"><div class="gauge-fill ${fillCls}" style="width:${pct}%"></div></div>
-                        <div class="odcr-util-meta">${r.used}/${r.capacity} used${unusedTag}</div>
-                        <div class="odcr-util-meta">${r.group}${r.subscription_name ? " · " + r.subscription_name : ""}</div>
+                    <div class="odcr-util-card ${cardCls} odcr-highlight-target" data-odcr-group="${groupName}">
+                        ${zoneRows}
+                        <div class="odcr-util-meta">${groupName}${subName ? " · " + subName : ""}</div>
                     </div>
                 </div>`;
             }).join("");
