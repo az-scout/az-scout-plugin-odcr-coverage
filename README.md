@@ -37,14 +37,22 @@ Restart az-scout — the plugin is discovered automatically.
 
 | Role | Why |
 |------|-----|
-| **Reader** | List VMs, Capacity Reservation Groups |
+| **Reader** | List VMs (via ARG), Capacity Reservation Groups |
 | **Reader** or **Monitoring Reader** | Activity Log queries |
-cp -r /tmp/az-scout/docs/plugin-scaffold ./az-scout-myplugin
-cd ./az-scout-myplugin
 
-# Update pyproject.toml: name, entry point, package name
-# Rename src/az_scout_odcr_coverage/ to match your package
+## Setup
 
+```bash
+uv pip install az-scout-plugin-odcr-coverage
+az-scout  # plugin is auto-discovered
+```
+
+For development:
+
+```bash
+git clone https://github.com/az-scout/az-scout-plugin-odcr-coverage
+cd az-scout-plugin-odcr-coverage
+uv sync --group dev
 uv pip install -e .
 az-scout  # plugin is auto-discovered
 ```
@@ -77,18 +85,12 @@ az-scout-plugin-odcr-coverage/
 
 1. The plugin JS loads the HTML fragment into `#plugin-tab-odcr-coverage`.
 2. It listens to `azscout:*` context events from the core app.
-3. When both are set, it fetches subscriptions from `/api/subscriptions`.
-4. The user picks a subscription and clicks the button.
-5. The plugin calls `GET /plugins/odcr-coverage/hello?subscription_name=…&tenant=…&region=…`.
+3. When tenant and region are set, it fetches subscriptions from `/api/subscriptions`.
+4. The user picks subscriptions and clicks **Analyse**.
+5. The plugin calls `GET /plugins/odcr-coverage/coverage?region=…&subscription_id=…`.
+6. VM list and power state are fetched via Azure Resource Graph (single query); capacity reservations and activity log are fetched in parallel.
 
 ## Quality checks
-
-The scaffold includes GitHub Actions workflows in `.github/workflows/`:
-
-- **`ci.yml`** — Runs lint (ruff + mypy) and tests (pytest) on Python 3.11–3.13, triggered on push/PR to `main`.
-- **`publish.yml`** — Builds, creates a GitHub Release, and publishes to PyPI via trusted publishing (OIDC). Triggered on version tags (`v*`). Requires a `pypi` environment configured in your repo settings with OIDC trusted publishing.
-
-Run the same checks locally:
 
 ```bash
 uv run ruff check src/ tests/
@@ -97,19 +99,10 @@ uv run mypy src/
 uv run pytest
 ```
 
-To publish a release:
-
-```bash
-git tag v2026.2.0
-git push origin v2026.2.0
-```
-
 ## Copilot support
 
 The `.github/copilot-instructions.md` file provides context to GitHub Copilot about
-the plugin structure, conventions, and az-scout plugin API. It helps Copilot generate
-code that follows the project patterns.
-
+the plugin structure, conventions, and az-scout plugin API.
 
 ## License
 
@@ -117,4 +110,4 @@ code that follows the project patterns.
 
 ## Disclaimer
 
-> **This tool is not affiliated with Microsoft.** All capacity, pricing, and latency information are indicative and not a guarantee of deployment success. Spot placement scores are probabilistic. Quota values and pricing are dynamic and may change between planning and actual deployment. Latency values are based on [Microsoft published statistics](https://learn.microsoft.com/en-us/azure/networking/azure-network-latency) and must be validated with in-tenant measurements.
+> **This tool is not affiliated with Microsoft.** All capacity, pricing, and availability information is indicative and not a guarantee of deployment success. Values are dynamic and may change between planning and actual deployment. Always validate in official Microsoft sources and in your target tenant/subscription.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any
 
 from pydantic import Field
@@ -39,11 +40,22 @@ def get_odcr_coverage(
         list_vms,
     )
 
-    vms = list_vms(subscription_id, region=region, tenant_id=tenant_id)
-    reservations = list_capacity_reservations(subscription_id, tenant_id=tenant_id)
-    events_by_vm = get_allocation_events(
-        subscription_id, lookback_days=lookback_days, tenant_id=tenant_id
-    )
+    vms: list[dict[str, Any]]
+    reservations: list[dict[str, Any]]
+    events_by_vm: dict[str, list[dict[str, Any]]]
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_vms = pool.submit(list_vms, subscription_id, region=region, tenant_id=tenant_id)
+        fut_res = pool.submit(list_capacity_reservations, subscription_id, tenant_id=tenant_id)
+        fut_evt = pool.submit(
+            get_allocation_events,
+            subscription_id,
+            lookback_days=lookback_days,
+            tenant_id=tenant_id,
+        )
+        vms = fut_vms.result()
+        reservations = fut_res.result()
+        events_by_vm = fut_evt.result()
 
     # Filter reservations to the target region
     region_reservations = [r for r in reservations if r["location"] == region.lower()]
@@ -85,10 +97,7 @@ def _build_coverage_report(
         vm_id_lower = vm["id"].lower()
         events = events_by_vm.get(vm_id_lower, [])
 
-        # Compute uptime
-        uptime_pct = compute_uptime_pct(events, lookback_days)
-
-        # Infer power state from events if not available from instanceView
+        # Infer power state from events if not available from ARG/instanceView
         power_state = vm["power_state"]
         if power_state == "unknown" and events:
             last_event = events[-1]
@@ -98,6 +107,9 @@ def _build_coverage_report(
                 power_state = "running"
             elif last_op in ("deallocate", "powerOff") and last_status == "succeeded":
                 power_state = "deallocated"
+
+        # Compute uptime
+        uptime_pct = compute_uptime_pct(events, lookback_days, power_state=power_state)
 
         # Allocation stats
         alloc_attempts = sum(1 for e in events if e["operation"] in ("start", "write"))
@@ -175,18 +187,22 @@ def _build_coverage_report(
     risk_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "covered": 4}
     vm_reports.sort(key=lambda v: risk_order.get(v["risk"], 99))
 
-    # ODCR utilization — compute 'used' by counting VMs associated with each group
-    vms_per_group: dict[str, int] = {}
+    # ODCR utilization — compute 'used' by counting VMs per group per zone
+    vms_per_group_zone: dict[str, int] = {}
     for vm in vms:
         gid = vm.get("odcr_group_id")
         if gid:
-            vms_per_group[gid.lower()] = vms_per_group.get(gid.lower(), 0) + 1
+            zone = vm.get("zone") or ""
+            key = f"{gid.lower()}:{zone}"
+            vms_per_group_zone[key] = vms_per_group_zone.get(key, 0) + 1
 
     reservation_details = []
     total_reserved = 0
     total_used = 0
     for r in reservations:
-        used = vms_per_group.get(r["group_id"].lower(), 0)
+        zone = r["zone"] or ""
+        key = f"{r['group_id'].lower()}:{zone}"
+        used = vms_per_group_zone.get(key, 0)
         total_reserved += r["capacity"]
         total_used += used
         reservation_details.append(
