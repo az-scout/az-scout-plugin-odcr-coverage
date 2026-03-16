@@ -526,7 +526,8 @@
                     const color = isFail ? "text-danger" : e.operation === "start" ? "text-success" : "text-warning";
                     const ts = formatTimestamp(e.timestamp);
                     const errorTag = e.error_code ? ` <code class="text-danger">${e.error_code}</code>` : "";
-                    html += `<div class="odcr-timeline-item">
+                    const tooltip = `correlationId: ${e.correlation_id || "—"}\noperationName: ${e.operation_name || "—"}`;
+                    html += `<div class="odcr-timeline-item" title="${tooltip}">
                         <div class="odcr-timeline-rail">
                             <div class="rail-line"></div>
                             <i class="bi bi-${icon} ${color} rail-dot"></i>

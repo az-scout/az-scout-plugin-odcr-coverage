@@ -329,6 +329,14 @@ def get_allocation_events(
     # Filter to relevant operations in code
     _op_names = {op.lower() for op in _VM_OPERATIONS}
 
+    # Status priority: keep terminal status over intermediate ones
+    _status_priority = {"failed": 3, "failure": 3, "succeeded": 2, "accepted": 1, "started": 0}
+
+    # Deduplicate: Activity Log emits Started → Accepted → Succeeded for the
+    # same operation. Key by (resource_id, correlationId, operation) and keep
+    # only the highest-priority status.
+    best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
+
     events_by_vm: dict[str, list[dict[str, Any]]] = {}
     for event in raw_events:
         # Check operation name
@@ -372,7 +380,6 @@ def get_allocation_events(
         # Normalize operation name to short form
         short_op = op_name.rsplit("/", 1)[-1] if "/" in op_name else op_name
         if short_op == "action":
-            # e.g. "start/action" → "start"
             parts = op_name.rsplit("/", 2)
             short_op = parts[-2] if len(parts) >= 2 else short_op
 
@@ -384,6 +391,16 @@ def get_allocation_events(
         if error_code:
             entry["error_code"] = error_code
 
+        # Deduplicate by (resource_id, correlationId, operation)
+        correlation_id = event.get("correlationId", "")
+        dedup_key = (resource_id, correlation_id, short_op)
+        priority = _status_priority.get(status.lower(), 0)
+        existing = best_events.get(dedup_key)
+        if existing is None or priority > existing[0]:
+            best_events[dedup_key] = (priority, entry)
+
+    # Build per-VM event lists from deduplicated entries
+    for (resource_id, _, _), (_, entry) in best_events.items():
         events_by_vm.setdefault(resource_id, []).append(entry)
 
     # Sort events by timestamp for each VM

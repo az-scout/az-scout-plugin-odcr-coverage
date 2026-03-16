@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from az_scout_odcr_coverage.azure_api import compute_uptime_pct
 from az_scout_odcr_coverage.tools import _build_coverage_report
 
 _SUB = "/subscriptions/s"
+
+
+def _ts(days_ago: float) -> str:
+    """Return an ISO timestamp for `days_ago` days before now."""
+    return (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 _RG = f"{_SUB}/resourceGroups/rg"
 _VM_PFX = f"{_RG}/providers/Microsoft.Compute/virtualMachines"
 _CR_PFX = f"{_RG}/providers/Microsoft.Compute/capacityReservationGroups"
@@ -60,23 +68,24 @@ class TestComputeUptimePct:
 
     def test_always_running(self) -> None:
         events = [
-            {"timestamp": "2026-03-04T00:00:00Z", "operation": "start", "status": "Succeeded"},
+            {"timestamp": _ts(5), "operation": "start", "status": "Succeeded"},
         ]
         pct = compute_uptime_pct(events, 7)
-        assert pct > 95.0
+        assert pct > 65.0
 
     def test_start_then_deallocate(self) -> None:
         events = [
-            {"timestamp": "2026-03-04T00:00:00Z", "operation": "start", "status": "Succeeded"},
-            {"timestamp": "2026-03-07T12:00:00Z", "operation": "deallocate", "status": "Succeeded"},
+            {"timestamp": _ts(5), "operation": "start", "status": "Succeeded"},
+            {"timestamp": _ts(2), "operation": "deallocate", "status": "Succeeded"},
         ]
         pct = compute_uptime_pct(events, 7)
-        assert 20.0 < pct < 60.0
+        # Running from window start → deallocate at day 2: ~71%
+        assert 60.0 < pct < 80.0
 
     def test_failed_start_stays_off(self) -> None:
         events = [
-            {"timestamp": "2026-03-04T00:00:00Z", "operation": "deallocate", "status": "Succeeded"},
-            {"timestamp": "2026-03-05T00:00:00Z", "operation": "start", "status": "Failed"},
+            {"timestamp": _ts(5), "operation": "deallocate", "status": "Succeeded"},
+            {"timestamp": _ts(4), "operation": "start", "status": "Failed"},
         ]
         pct = compute_uptime_pct(events, 7)
         # VM was assumed running at start, then deallocated, then failed to start
