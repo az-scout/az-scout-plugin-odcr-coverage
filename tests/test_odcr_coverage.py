@@ -211,7 +211,195 @@ class TestChatCliCommand:
         assert p.name == "odcr-coverage"
         assert p.get_router() is not None
         assert p.get_mcp_tools() is not None
+        assert len(p.get_mcp_tools()) == 3  # type: ignore[arg-type]
         assert p.get_static_dir() is not None
         assert p.get_tabs() is not None
         assert p.get_chat_modes() is not None
         assert p.get_system_prompt_addendum() is not None
+
+
+class TestGetOdcrCoverageSummary:
+    """Tests for the fast summary tool (no Activity Log)."""
+
+    def test_summary_skips_events(self) -> None:
+        """Summary tool should produce a report with no allocation events."""
+        # _build_coverage_report with empty events → no critical/high risk
+        vms = [_vm(name="vm-running"), _vm(name="vm-stopped", power_state="deallocated")]
+        result = _build_coverage_report(vms, [], {}, 7, 90.0)
+        assert result["summary"]["total_vms"] == 2
+        # Without events: running VM → medium (uptime 100% but no failures)
+        # Stopped VM → low
+        risks = {v["name"]: v["risk"] for v in result["vms"]}
+        assert risks["vm-running"] == "high"  # 100% uptime ≥ threshold
+        assert risks["vm-stopped"] == "low"
+
+    def test_summary_includes_odcr_utilization(self) -> None:
+        gid = f"{_CR_PFX}/g1"
+        vms = [_vm(name="vm-1", odcr_group_id=gid)]
+        reservations = [_reservation(group_id=gid, group_name="g1", capacity=3)]
+        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        assert result["summary"]["covered"] == 1
+        assert result["odcr_utilization"]["total_reserved"] == 3
+        assert result["odcr_utilization"]["total_used"] == 1
+
+
+class TestGetOdcrVmAllocationHistory:
+    """Tests for the VM drill-down tool."""
+
+    def test_filters_to_named_vms(self) -> None:
+        """Drill-down should only include VMs matching the requested names."""
+        vms = [_vm(name="vm-prod-01"), _vm(name="vm-prod-02"), _vm(name="vm-dev-01")]
+        vm_id_1 = vms[0]["id"].lower()
+        events = {
+            vm_id_1: [
+                {
+                    "timestamp": _ts(2),
+                    "operation": "start",
+                    "status": "Failed",
+                    "error_code": "AllocationFailed",
+                },
+                {"timestamp": _ts(1), "operation": "start", "status": "Succeeded"},
+            ]
+        }
+        # Simulate the filter that get_odcr_vm_allocation_history does
+        name_set = {"vm-prod-01"}
+        filtered_vms = [vm for vm in vms if vm["name"].lower() in name_set]
+        result = _build_coverage_report(filtered_vms, [], events, 7, 90.0)
+        assert result["summary"]["total_vms"] == 1
+        assert result["vms"][0]["name"] == "vm-prod-01"
+        assert result["vms"][0]["risk"] == "critical"
+        assert result["vms"][0]["allocation_summary"]["failed"] == 1
+
+
+class TestStreamingRoute:
+    """Tests for the SSE streaming endpoint helpers."""
+
+    def test_sse_format(self) -> None:
+        from az_scout_odcr_coverage.routes import _sse
+
+        result = _sse("vms", {"count": 42})
+        assert result.startswith("event: vms\n")
+        assert "data: " in result
+        assert result.endswith("\n\n")
+        # Data should be valid JSON
+        import json
+
+        data_line = result.split("data: ")[1].split("\n")[0]
+        parsed = json.loads(data_line)
+        assert parsed["count"] == 42
+
+    def test_build_coverage_report_empty_events_gives_preliminary_risk(self) -> None:
+        """Phase-1 report (empty events) should produce preliminary risk levels."""
+        vms = [
+            _vm(name="running-vm", power_state="running"),
+            _vm(name="stopped-vm", power_state="deallocated"),
+        ]
+        gid = f"{_CR_PFX}/g1"
+        covered_vm = _vm(name="covered-vm", odcr_group_id=gid)
+        vms.append(covered_vm)
+        reservations = [_reservation(group_id=gid, group_name="g1")]
+
+        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        risk_map = {v["name"]: v["risk"] for v in result["vms"]}
+        assert risk_map["covered-vm"] == "covered"
+        assert risk_map["stopped-vm"] == "low"
+        # Without events, running VM gets "high" (100% uptime ≥ 90% threshold)
+        assert risk_map["running-vm"] == "high"
+
+
+class TestIterAllocationEvents:
+    """Tests for the page-by-page Activity Log iterator."""
+
+    def test_process_raw_events_filters_and_deduplicates(self) -> None:
+        from az_scout_odcr_coverage.azure_api import _build_events_by_vm, _process_raw_events
+
+        best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
+
+        raw_events = [
+            # Relevant start event (Started → should be overwritten by Succeeded)
+            {
+                "operationName": {"value": "Microsoft.Compute/virtualMachines/start/action"},
+                "resourceId": f"{_VM_PFX}/vm-1",
+                "status": {"value": "Started"},
+                "eventTimestamp": _ts(2),
+                "correlationId": "c1",
+            },
+            {
+                "operationName": {"value": "Microsoft.Compute/virtualMachines/start/action"},
+                "resourceId": f"{_VM_PFX}/vm-1",
+                "status": {"value": "Succeeded"},
+                "eventTimestamp": _ts(2),
+                "correlationId": "c1",
+            },
+            # Irrelevant operation — should be filtered out
+            {
+                "operationName": {"value": "Microsoft.Compute/virtualMachines/extensions/write"},
+                "resourceId": f"{_VM_PFX}/vm-1",
+                "status": {"value": "Succeeded"},
+                "eventTimestamp": _ts(1),
+                "correlationId": "c2",
+            },
+        ]
+
+        _process_raw_events(raw_events, best_events)
+        events_by_vm = _build_events_by_vm(best_events)
+
+        vm_key = f"{_VM_PFX}/vm-1".lower()
+        assert vm_key in events_by_vm
+        assert len(events_by_vm[vm_key]) == 1  # deduplicated: only Succeeded kept
+        assert events_by_vm[vm_key][0]["status"] == "Succeeded"
+
+    def test_process_raw_events_accumulates_across_pages(self) -> None:
+        from az_scout_odcr_coverage.azure_api import _build_events_by_vm, _process_raw_events
+
+        best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
+
+        # Page 1: start event for vm-1
+        page1 = [
+            {
+                "operationName": {"value": "Microsoft.Compute/virtualMachines/start/action"},
+                "resourceId": f"{_VM_PFX}/vm-1",
+                "status": {"value": "Succeeded"},
+                "eventTimestamp": _ts(3),
+                "correlationId": "c1",
+            },
+        ]
+        _process_raw_events(page1, best_events)
+        r1 = _build_events_by_vm(best_events)
+        assert len(r1) == 1  # 1 VM after page 1
+
+        # Page 2: deallocate event for vm-2
+        page2 = [
+            {
+                "operationName": {"value": "Microsoft.Compute/virtualMachines/deallocate/action"},
+                "resourceId": f"{_VM_PFX}/vm-2",
+                "status": {"value": "Succeeded"},
+                "eventTimestamp": _ts(2),
+                "correlationId": "c2",
+            },
+        ]
+        _process_raw_events(page2, best_events)
+        r2 = _build_events_by_vm(best_events)
+        assert len(r2) == 2  # 2 VMs after page 2 (cumulative)
+
+
+class TestProgressSseEvent:
+    """Tests for progress SSE event format."""
+
+    def test_progress_event_contains_day_fields(self) -> None:
+        import json
+
+        from az_scout_odcr_coverage.routes import _sse
+
+        progress = _sse(
+            "progress",
+            {
+                "days_covered": 12,
+                "lookback_days": 30,
+            },
+        )
+        assert progress.startswith("event: progress\n")
+        data_line = progress.split("data: ")[1].split("\n")[0]
+        parsed = json.loads(data_line)
+        assert parsed["days_covered"] == 12
+        assert parsed["lookback_days"] == 30

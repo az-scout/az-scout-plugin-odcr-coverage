@@ -9,6 +9,92 @@ from typing import Annotated, Any
 from pydantic import Field
 
 
+def get_odcr_coverage_summary(
+    region: Annotated[str, Field(description="Azure region name (e.g. francecentral).")],
+    subscription_id: Annotated[str, Field(description="Azure subscription ID (UUID).")],
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
+) -> str:
+    """Get a fast ODCR coverage overview for VMs in a region (no Activity Log).
+
+    Returns per-VM ODCR coverage status and preliminary risk levels based on
+    power state only (no allocation event history). Use this for quick overview
+    questions like "how many VMs are covered?" or "show ODCR utilization".
+
+    Risk levels without Activity Log:
+    - covered: VM has ODCR protection
+    - medium: VM is running without ODCR (no event data to distinguish high/critical)
+    - low: VM is stopped/deallocated without ODCR
+
+    For detailed allocation history and accurate risk levels, use the
+    get_odcr_coverage tool instead.
+    """
+    from az_scout_odcr_coverage.azure_api import list_capacity_reservations, list_vms
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_vms = pool.submit(list_vms, subscription_id, region=region, tenant_id=tenant_id)
+        fut_res = pool.submit(list_capacity_reservations, subscription_id, tenant_id=tenant_id)
+        vms = fut_vms.result()
+        reservations = fut_res.result()
+
+    region_reservations = [r for r in reservations if r["location"] == region.lower()]
+    result = _build_coverage_report(vms, region_reservations, {}, 7, 90.0)
+    return json.dumps(result, indent=2)
+
+
+def get_odcr_vm_allocation_history(
+    region: Annotated[str, Field(description="Azure region name (e.g. francecentral).")],
+    subscription_id: Annotated[str, Field(description="Azure subscription ID (UUID).")],
+    vm_names: Annotated[
+        list[str],
+        Field(description="VM names to get allocation history for (e.g. ['vm-prod-01'])."),
+    ],
+    lookback_days: Annotated[
+        int, Field(description="Number of days to look back for allocation events.")
+    ] = 7,
+    uptime_threshold: Annotated[
+        float,
+        Field(description="Uptime percentage threshold to recommend ODCR (0-100)."),
+    ] = 90.0,
+    tenant_id: Annotated[str | None, Field(description="Optional tenant ID.")] = None,
+) -> str:
+    """Get allocation history and accurate risk for specific VMs.
+
+    Fetches Activity Log events only for the named VMs and returns their
+    allocation summary, uptime, and risk level.
+
+    Use this after get_odcr_coverage_summary to drill into specific VMs
+    that the user asks about (e.g. allocation failures, uptime details).
+    """
+    from az_scout_odcr_coverage.azure_api import (
+        get_allocation_events,
+        list_capacity_reservations,
+        list_vms,
+    )
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        fut_vms = pool.submit(list_vms, subscription_id, region=region, tenant_id=tenant_id)
+        fut_res = pool.submit(list_capacity_reservations, subscription_id, tenant_id=tenant_id)
+        fut_evt = pool.submit(
+            get_allocation_events,
+            subscription_id,
+            lookback_days=lookback_days,
+            tenant_id=tenant_id,
+        )
+        vms = fut_vms.result()
+        reservations = fut_res.result()
+        events_by_vm = fut_evt.result()
+
+    # Filter VMs to only the requested names
+    name_set = {n.lower() for n in vm_names}
+    filtered_vms = [vm for vm in vms if vm["name"].lower() in name_set]
+
+    region_reservations = [r for r in reservations if r["location"] == region.lower()]
+    result = _build_coverage_report(
+        filtered_vms, region_reservations, events_by_vm, lookback_days, uptime_threshold
+    )
+    return json.dumps(result, indent=2)
+
+
 def get_odcr_coverage(
     region: Annotated[str, Field(description="Azure region name (e.g. francecentral).")],
     subscription_id: Annotated[str, Field(description="Azure subscription ID (UUID).")],
