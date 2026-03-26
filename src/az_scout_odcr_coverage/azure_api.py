@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from az_scout.azure_api import ArmRequestError, arm_paginate, arm_post
+from az_scout.azure_api import ArmRequestError, arm_get, arm_paginate, arm_post
 
 logger = logging.getLogger(__name__)
 
@@ -56,14 +57,6 @@ _VM_OPERATIONS = (
 _WRITE_ALLOCATION_SUBSTATUS = {
     "created",
     "accepted",
-}
-
-# Allocation failure error codes
-_ALLOCATION_ERROR_CODES = {
-    "AllocationFailed",
-    "OverconstrainedAllocationRequest",
-    "OverconstrainedZonalAllocationRequest",
-    "AllocationTimedOut",
 }
 
 _ARG_VM_QUERY = (
@@ -287,63 +280,23 @@ def list_capacity_reservations(
     return reservations
 
 
-def get_allocation_events(
-    subscription_id: str,
-    *,
-    lookback_days: int = 7,
-    tenant_id: str | None = None,
-) -> dict[str, list[dict[str, Any]]]:
-    """Get VM allocation events from the Activity Log.
+# ---------------------------------------------------------------------------
+# Activity Log event processing helpers
+# ---------------------------------------------------------------------------
+_OP_NAMES = {op.lower() for op in _VM_OPERATIONS}
+_STATUS_PRIORITY = {"failed": 3, "failure": 3, "succeeded": 2, "accepted": 1, "started": 0}
 
-    Returns a dict keyed by VM resource ID (lowercased) → list of events.
-    Each event has: timestamp, operation, status, error_code (if failed).
-    """
-    cache_key = f"events:{subscription_id}:{lookback_days}"
-    hit = _cached(cache_key, _CACHE_TTL_EVENTS)
-    if hit is not None:
-        return hit  # type: ignore[no-any-return]
 
-    start_time = (datetime.now(UTC) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    # The Activity Log $filter only supports a limited set of fields
-    # (eventTimestamp, resourceType, status, etc.). operationName is NOT
-    # supported as a filter — we fetch all VM events and filter in code.
-    odata_filter = (
-        f"eventTimestamp ge '{start_time}' and resourceType eq 'Microsoft.Compute/virtualMachines'"
-    )
-
-    url = (
-        f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}"
-        f"/providers/Microsoft.Insights/eventtypes/management/values"
-        f"?api-version={ACTIVITY_LOG_API}&$filter={odata_filter}"
-    )
-
-    t0 = time.monotonic()
-    raw_events = arm_paginate(url, tenant_id=tenant_id)
-    logger.debug(
-        "get_allocation_events: Activity Log fetch took %.1fs (%d raw events)",
-        time.monotonic() - t0,
-        len(raw_events),
-    )
-
-    # Filter to relevant operations in code
-    _op_names = {op.lower() for op in _VM_OPERATIONS}
-
-    # Status priority: keep terminal status over intermediate ones
-    _status_priority = {"failed": 3, "failure": 3, "succeeded": 2, "accepted": 1, "started": 0}
-
-    # Deduplicate: Activity Log emits Started → Accepted → Succeeded for the
-    # same operation. Key by (resource_id, correlationId, operation) and keep
-    # only the highest-priority status.
-    best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
-
-    events_by_vm: dict[str, list[dict[str, Any]]] = {}
+def _process_raw_events(
+    raw_events: list[dict[str, Any]],
+    best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]],
+) -> None:
+    """Filter and deduplicate raw Activity Log events into *best_events* (in-place)."""
     for event in raw_events:
-        # Check operation name
         op_name = event.get("operationName", {})
         if isinstance(op_name, dict):
             op_name = op_name.get("value", "")
-        if op_name.lower() not in _op_names:
+        if op_name.lower() not in _OP_NAMES:
             continue
 
         resource_id = (event.get("resourceId") or "").lower()
@@ -353,8 +306,6 @@ def get_allocation_events(
         status_obj = event.get("status", {})
         status = status_obj.get("value", "") if isinstance(status_obj, dict) else str(status_obj)
 
-        # For 'write' events, only include actual VM creation or allocation
-        # failures — skip tag updates, property changes, etc.
         if op_name.lower().endswith("/write"):
             sub_status = event.get("subStatus", {})
             sub_val = (
@@ -367,7 +318,6 @@ def get_allocation_events(
             if not is_creation and not is_failure:
                 continue
 
-        # Extract error code from failed events
         error_code = None
         if status.lower() in ("failed", "failure"):
             try:
@@ -377,7 +327,6 @@ def get_allocation_events(
             except (json.JSONDecodeError, AttributeError):
                 error_code = "Unknown"
 
-        # Normalize operation name to short form
         short_op = op_name.rsplit("/", 1)[-1] if "/" in op_name else op_name
         if short_op == "action":
             parts = op_name.rsplit("/", 2)
@@ -391,30 +340,118 @@ def get_allocation_events(
         if error_code:
             entry["error_code"] = error_code
 
-        # Deduplicate by (resource_id, correlationId, operation)
         correlation_id = event.get("correlationId", "")
         dedup_key = (resource_id, correlation_id, short_op)
-        priority = _status_priority.get(status.lower(), 0)
+        priority = _STATUS_PRIORITY.get(status.lower(), 0)
         existing = best_events.get(dedup_key)
         if existing is None or priority > existing[0]:
             best_events[dedup_key] = (priority, entry)
 
-    # Build per-VM event lists from deduplicated entries
+
+def _build_events_by_vm(
+    best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Build sorted per-VM event lists from deduplicated *best_events*."""
+    events_by_vm: dict[str, list[dict[str, Any]]] = {}
     for (resource_id, _, _), (_, entry) in best_events.items():
         events_by_vm.setdefault(resource_id, []).append(entry)
-
-    # Sort events by timestamp for each VM
     for vm_events in events_by_vm.values():
         vm_events.sort(key=lambda e: e["timestamp"])
-
-    logger.info(
-        "get_allocation_events: %d events across %d VMs (lookback=%dd)",
-        sum(len(v) for v in events_by_vm.values()),
-        len(events_by_vm),
-        lookback_days,
-    )
-    _cache_set(cache_key, events_by_vm)
     return events_by_vm
+
+
+def _activity_log_url(subscription_id: str, lookback_days: int) -> str:
+    """Build the Activity Log API URL with date filter."""
+    start_time = (datetime.now(UTC) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    odata_filter = (
+        f"eventTimestamp ge '{start_time}' and resourceType eq 'Microsoft.Compute/virtualMachines'"
+    )
+    return (
+        f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}"
+        f"/providers/Microsoft.Insights/eventtypes/management/values"
+        f"?api-version={ACTIVITY_LOG_API}&$filter={odata_filter}"
+    )
+
+
+def iter_allocation_events(
+    subscription_id: str,
+    *,
+    lookback_days: int = 7,
+    tenant_id: str | None = None,
+) -> Iterator[tuple[dict[str, list[dict[str, Any]]], int]]:
+    """Yield ``(events_by_vm, days_covered)`` after each Activity Log page.
+
+    *days_covered* is the number of lookback days covered so far, computed
+    from the oldest event timestamp seen. On a cache hit the generator
+    yields once with ``days_covered=lookback_days``.
+    Each yield contains the cumulative, deduplicated events collected so far.
+    """
+    cache_key = f"events:{subscription_id}:{lookback_days}"
+    hit = _cached(cache_key, _CACHE_TTL_EVENTS)
+    if hit is not None:
+        yield hit, lookback_days
+        return
+
+    url: str | None = _activity_log_url(subscription_id, lookback_days)
+    best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
+    page_num = 0
+    now = datetime.now(UTC)
+    oldest_ts = now
+    t0 = time.monotonic()
+
+    while url:
+        page_num += 1
+        response = arm_get(url, tenant_id=tenant_id)
+        raw_page = response.get("value", [])
+        url = response.get("nextLink")
+
+        # Track oldest event timestamp to compute days covered.
+        # Activity Log returns events newest-first, so the last event
+        # on each page is the oldest so far.
+        for evt in raw_page:
+            ts_str = evt.get("eventTimestamp", "")
+            if ts_str:
+                try:
+                    ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                    if ts < oldest_ts:
+                        oldest_ts = ts
+                except ValueError:
+                    pass
+
+        days_covered = min(int((now - oldest_ts).total_seconds() / 86400) + 1, lookback_days)
+
+        _process_raw_events(raw_page, best_events)
+        yield _build_events_by_vm(best_events), days_covered
+
+    final = _build_events_by_vm(best_events)
+    logger.info(
+        "iter_allocation_events: %d events across %d VMs (lookback=%dd, %d pages, %.1fs)",
+        sum(len(v) for v in final.values()),
+        len(final),
+        lookback_days,
+        page_num,
+        time.monotonic() - t0,
+    )
+    _cache_set(cache_key, final)
+
+
+def get_allocation_events(
+    subscription_id: str,
+    *,
+    lookback_days: int = 7,
+    tenant_id: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Get VM allocation events from the Activity Log.
+
+    Returns a dict keyed by VM resource ID (lowercased) → list of events.
+    Each event has: timestamp, operation, status, error_code (if failed).
+    """
+    result: dict[str, list[dict[str, Any]]] = {}
+    for events_by_vm, _ in iter_allocation_events(
+        subscription_id, lookback_days=lookback_days, tenant_id=tenant_id
+    ):
+        result = events_by_vm
+    return result
 
 
 def compute_uptime_pct(

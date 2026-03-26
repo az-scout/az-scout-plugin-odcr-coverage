@@ -124,6 +124,10 @@
             hide("odcr-empty"); hide("odcr-error");
             show("odcr-progress"); show("odcr-results");
 
+            // Reset progress bar
+            const bar = document.getElementById("odcr-progress-bar");
+            if (bar) { bar.style.width = "0%"; bar.classList.remove("bg-success"); }
+
             // Show a spinner in the table while loading
             const tbody = document.getElementById("odcr-vm-tbody");
             if (tbody) {
@@ -132,7 +136,7 @@
                     <span class="text-body-secondary ms-2">Loading…</span>
                 </td></tr>`;
             }
-            setProgressLabel(`Analysing subscription 1/${subIds.length}…`);
+            setProgressLabel(`Listing VMs for subscription 1/${subIds.length}…`);
             await new Promise(r => setTimeout(r, 0));
 
             const subs = getSubs();
@@ -151,30 +155,116 @@
             const errors = [];
             const ro = { critical: 0, high: 1, medium: 2, low: 3, covered: 4 };
 
+            // Track per-subscription state for two-phase merging
+            const subData = {};  // subId → { vms, summary, reservations }
+            let completedSubs = 0;
+
             for (let i = 0; i < subIds.length; i++) {
                 const subId = subIds[i];
                 const subName = subMap[subId] || subId.slice(0, 8) + "…";
-                setProgress(Math.round((i / subIds.length) * 100),
-                    `Analysing ${subName} (${i + 1}/${subIds.length})…`);
+                subData[subId] = { vms: [], summary: null, reservations: [] };
+
+                const qs = `region=${encodeURIComponent(reg)}&subscription_id=${encodeURIComponent(subId)}&lookback_days=${days}`
+                    + (tid ? `&tenant_id=${encodeURIComponent(tid)}` : "");
+
                 try {
-                    const qs = `region=${reg}&subscription_id=${subId}&lookback_days=${days}`
-                        + (tid ? `&tenant_id=${tid}` : "");
-                    const data = await apiFetch(`/plugins/${PLUGIN}/coverage?${qs}`);
-                    for (const vm of data.vms) {
-                        vm.subscription_name = subName;
-                        vm.subscription_id = subId;
-                        allVms.push(vm);
+                    await new Promise((resolve, reject) => {
+                        const es = new EventSource(`/plugins/${PLUGIN}/coverage/stream?${qs}`);
+
+                        es.addEventListener("vms", (evt) => {
+                            const data = JSON.parse(evt.data);
+                            // Store phase-1 data for this subscription
+                            subData[subId].vms = data.vms.map(vm => ({
+                                ...vm, subscription_name: subName, subscription_id: subId,
+                                _preliminary: true,
+                            }));
+                            subData[subId].summary = data.summary;
+                            subData[subId].reservations = (data.odcr_utilization?.reservations || []).map(
+                                r => ({ ...r, subscription_name: subName })
+                            );
+                            rebuildMerged();
+                            const subTag = subIds.length > 1 ? ` — sub ${i + 1}/${subIds.length}` : "";
+                            setProgress(
+                                Math.round(((completedSubs + 0.3) / subIds.length) * 100),
+                                `${subName}: loading events…${subTag}`
+                            );
+                        });
+
+                        es.addEventListener("progress", (evt) => {
+                            try {
+                                const data = JSON.parse(evt.data);
+                                const dc = data.days_covered || 0;
+                                const lb = data.lookback_days || parseInt(days, 10);
+                                // Progress within this subscription: VMs loaded (~30%) + event days
+                                const subPct = 0.3 + 0.7 * (dc / lb);
+                                const subTag = subIds.length > 1 ? ` — sub ${i + 1}/${subIds.length}` : "";
+                                setProgress(
+                                    Math.round(((completedSubs + subPct) / subIds.length) * 100),
+                                    `${subName}: events ${dc}/${lb}d…${subTag}`
+                                );
+                            } catch { /* ignore */ }
+                        });
+
+                        es.addEventListener("enriched", (evt) => {
+                            const data = JSON.parse(evt.data);
+                            // Replace data with progressively enriched results
+                            subData[subId].vms = data.vms.map(vm => ({
+                                ...vm, subscription_name: subName, subscription_id: subId,
+                            }));
+                            subData[subId].summary = data.summary;
+                            subData[subId].reservations = (data.odcr_utilization?.reservations || []).map(
+                                r => ({ ...r, subscription_name: subName })
+                            );
+                            rebuildMerged();
+                        });
+
+                        es.addEventListener("error", (evt) => {
+                            // SSE error event with data (server-sent error)
+                            if (evt.data) {
+                                try {
+                                    const err = JSON.parse(evt.data);
+                                    errors.push(`${subName}: ${err.message}`);
+                                } catch { /* ignore parse errors */ }
+                            }
+                        });
+
+                        es.addEventListener("done", () => {
+                            es.close();
+                            resolve();
+                        });
+
+                        es.onerror = () => {
+                            es.close();
+                            errors.push(`${subName}: Connection lost`);
+                            reject(new Error("SSE connection failed"));
+                        };
+                    });
+                } catch {
+                    // Error already collected above; continue to next sub
+                }
+                completedSubs++;
+                setProgress(
+                    Math.round((completedSubs / subIds.length) * 100),
+                    completedSubs < subIds.length
+                        ? `Listing VMs for subscription ${completedSubs + 1}/${subIds.length}…`
+                        : "Finalizing…"
+                );
+            }
+
+            function rebuildMerged() {
+                // Rebuild merged state from all subscriptions' current data
+                allVms.length = 0;
+                allRes.length = 0;
+                Object.keys(merged).forEach(k => { merged[k] = 0; });
+
+                for (const sd of Object.values(subData)) {
+                    for (const vm of sd.vms) allVms.push(vm);
+                    if (sd.summary) {
+                        for (const k of Object.keys(merged)) merged[k] += sd.summary[k] || 0;
                     }
-                    for (const k of Object.keys(merged)) merged[k] += data.summary[k] || 0;
-                    for (const r of data.odcr_utilization.reservations) {
-                        r.subscription_name = subName;
-                        allRes.push(r);
-                    }
-                } catch (err) {
-                    errors.push(`${subName}: ${err.message}`);
+                    for (const r of sd.reservations) allRes.push(r);
                 }
 
-                // Render incrementally after each subscription
                 allVms.sort((a, b) => (ro[a.risk] ?? 99) - (ro[b.risk] ?? 99));
                 renderResults({
                     summary: merged,

@@ -10,11 +10,15 @@ Identifies VMs at risk of allocation failure by combining VM inventory, Activity
 - **Allocation event timeline** — start/deallocate/failed events from Activity Log with configurable lookback (3–30 days)
 - **ODCR utilization** — reserved capacity, used/unused counts per reservation group
 - **Multi-subscription** — analyse across multiple subscriptions with incremental rendering and progress bar
+- **SSE streaming** — two-phase analysis: VMs load instantly, Activity Log events stream page-by-page with day-based progress
 - **VM detail modal** — click any VM row to see risk profile, allocation summary, and event timeline
 - **Cross-highlighting** — hover an ODCR card to highlight associated VMs, and vice versa
 - **Azure Portal links** — direct links to each VM in the Azure Portal
-- **MCP tool** — `get_odcr_coverage` available to AI agents (Claude, VS Code Copilot)
-- **Chat mode** — "ODCR Advisor" for guided capacity reservation analysis
+- **MCP tools** — three tools with tiered performance for AI agents:
+  - `get_odcr_coverage_summary` — fast overview (no Activity Log)
+  - `get_odcr_vm_allocation_history` — drill-down for specific VMs
+  - `get_odcr_coverage` — full analysis with allocation events
+- **Chat mode** — "ODCR Advisor" with tool selection guidance
 - **Caching** — VM list (5 min), capacity reservations (5 min), activity log (10 min)
 
 ## Installation
@@ -27,11 +31,13 @@ uv pip install az-scout-plugin-odcr-coverage
 
 Restart az-scout — the plugin is discovered automatically.
 
-## MCP Tool
+## MCP Tools
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `get_odcr_coverage` | `region`, `subscription_id`, `lookback_days?` (default: 7), `uptime_threshold?` (default: 90), `tenant_id?` | Analyse ODCR coverage with per-VM risk classification and allocation history |
+| `get_odcr_coverage_summary` | `region`, `subscription_id`, `tenant_id?` | Fast ODCR overview — VMs + utilization, no Activity Log |
+| `get_odcr_vm_allocation_history` | `region`, `subscription_id`, `vm_names`, `lookback_days?` (7), `uptime_threshold?` (90), `tenant_id?` | Allocation events + accurate risk for specific VMs |
+| `get_odcr_coverage` | `region`, `subscription_id`, `lookback_days?` (7), `uptime_threshold?` (90), `tenant_id?` | Full analysis with per-VM allocation history |
 
 ## RBAC Requirements
 
@@ -87,8 +93,10 @@ az-scout-plugin-odcr-coverage/
 2. It listens to `azscout:*` context events from the core app.
 3. When tenant and region are set, it fetches subscriptions from `/api/subscriptions`.
 4. The user picks subscriptions and clicks **Analyse**.
-5. The plugin calls `GET /plugins/odcr-coverage/coverage?region=…&subscription_id=…`.
-6. VM list and power state are fetched via Azure Resource Graph (single query); capacity reservations and activity log are fetched in parallel.
+5. For each subscription, an SSE stream (`GET /plugins/odcr-coverage/coverage/stream`) delivers results in two phases:
+   - **Phase 1** — VMs and ODCR utilization load instantly via Azure Resource Graph.
+   - **Phase 2** — Activity Log events stream page-by-page, progressively enriching VM risk levels and allocation stats. Progress is displayed as days covered (e.g. "events 12/30d").
+6. The table, summary cards, and risk bar update incrementally as data arrives.
 
 ## Quality checks
 

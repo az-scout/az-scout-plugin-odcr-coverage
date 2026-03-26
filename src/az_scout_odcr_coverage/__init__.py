@@ -35,9 +35,13 @@ class OdcrCoveragePlugin:
         return router
 
     def get_mcp_tools(self) -> list[Callable[..., Any]] | None:
-        from az_scout_odcr_coverage.tools import get_odcr_coverage
+        from az_scout_odcr_coverage.tools import (
+            get_odcr_coverage,
+            get_odcr_coverage_summary,
+            get_odcr_vm_allocation_history,
+        )
 
-        return [get_odcr_coverage]
+        return [get_odcr_coverage, get_odcr_coverage_summary, get_odcr_vm_allocation_history]
 
     def get_static_dir(self) -> Path | None:
         return _STATIC_DIR
@@ -62,7 +66,13 @@ class OdcrCoveragePlugin:
                     "You are an **ODCR Coverage Advisor** for Azure. You help users "
                     "identify VMs at risk of allocation failure and recommend On-Demand "
                     "Capacity Reservations.\n\n"
-                    "Use the `get_odcr_coverage` tool to analyse a subscription's VMs. "
+                    "**Tool selection:**\n"
+                    "- Use `get_odcr_coverage_summary` for overview questions (fast, "
+                    "no Activity Log).\n"
+                    "- Use `get_odcr_vm_allocation_history` to drill into specific "
+                    "VMs the user asks about.\n"
+                    "- Use `get_odcr_coverage` only when the user explicitly requests "
+                    "the full analysis with allocation events for all VMs.\n\n"
                     "Focus on:\n"
                     "- VMs with past allocation failures (critical risk)\n"
                     "- Always-on VMs without ODCR protection\n"
@@ -76,20 +86,22 @@ class OdcrCoveragePlugin:
                     "I can help you identify VMs at risk of allocation failure and "
                     "recommend Capacity Reservations.\n\n"
                     "Try asking:\n"
-                    "- *Analyse ODCR coverage for my VMs in swedencentral*\n"
-                    "- *Which VMs have had allocation failures in the last 30 days?*\n"
-                    "- *Are there any always-on VMs without ODCR protection?*\n"
-                    "- *Show unused capacity reservations across my subscriptions*\n"
-                    "- *What is the allocation failure rate for Standard_D16s_v5?*"
+                    "- [[What is the ODCR coverage for my VMs in this region?]]\n"
+                    "- [[Which VMs have had allocation failures in the last 30 days?]]\n"
+                    "- [[Are there any always-on VMs without ODCR protection?]]\n"
+                    "- [[Show unused capacity reservations across my subscriptions]]\n"
+                    "- [[What is the allocation failure rate for Standard_D16s_v5?]]"
                 ),
             )
         ]
 
     def get_system_prompt_addendum(self) -> str | None:
         return (
-            "The `get_odcr_coverage` tool analyses On-Demand Capacity Reservation "
-            "coverage. Use it when users ask about ODCR, capacity reservations, "
-            "allocation failures, or VM protection status."
+            "For ODCR / Capacity Reservation questions, prefer "
+            "`get_odcr_coverage_summary` for quick overview (fast, no Activity Log). "
+            "Use `get_odcr_vm_allocation_history` to drill into specific VMs. "
+            "Only use `get_odcr_coverage` when the user explicitly requests the "
+            "full analysis with allocation events for all VMs."
         )
 
 
