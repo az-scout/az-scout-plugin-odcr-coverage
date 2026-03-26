@@ -4,14 +4,18 @@ Analyses On-Demand Capacity Reservation coverage for VMs,
 highlighting allocation failure risks and ODCR gaps.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from az_scout.plugin_api import ChatMode, TabDefinition, get_plugin_logger
-from fastapi import APIRouter
+
+if TYPE_CHECKING:
+    from fastapi import APIRouter
 
 logger = get_plugin_logger("odcr-coverage")
 
