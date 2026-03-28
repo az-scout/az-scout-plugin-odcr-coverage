@@ -102,6 +102,8 @@
         btn?.addEventListener("click", analyze);
 
         // ---- Progress ----
+        let dbgStartTime = 0;
+
         function setProgressLabel(label) {
             const lbl = document.getElementById("odcr-progress-label");
             if (lbl) lbl.textContent = label;
@@ -123,6 +125,21 @@
 
             hide("odcr-empty"); hide("odcr-error");
             show("odcr-progress"); show("odcr-results");
+
+            // Reset debug stats
+            const dbgPerSub = {};  // subId → latest stats from backend
+            dbgStartTime = performance.now();
+            let dbgTimerHandle = null;
+            show("odcr-debug-panel");
+            updateDebugPanel({ pages: 0, raw_events: 0, filtered_events: 0, vms_with_events: 0 });
+
+            // Live elapsed timer
+            function tickTimer() {
+                const el = document.getElementById("odcr-dbg-elapsed");
+                if (el) el.textContent = fmtElapsed(performance.now() - dbgStartTime);
+            }
+            dbgTimerHandle = setInterval(tickTimer, 200);
+            tickTimer();
 
             // Reset progress bar
             const bar = document.getElementById("odcr-progress-bar");
@@ -202,6 +219,13 @@
                                     Math.round(((completedSubs + subPct) / subIds.length) * 100),
                                     `${subName}: events ${dc}/${lb}d…${subTag}`
                                 );
+                                // Update debug panel (stats are cumulative per sub)
+                                dbgPerSub[subId] = {
+                                    pages: data.pages || 0,
+                                    raw_events: data.raw_events || 0,
+                                    filtered_events: data.filtered_events || 0,
+                                };
+                                rebuildDebugPanel(dbgPerSub);
                             } catch { /* ignore */ }
                         });
 
@@ -216,6 +240,7 @@
                                 r => ({ ...r, subscription_name: subName })
                             );
                             rebuildMerged();
+                            rebuildDebugPanel(dbgPerSub);
                         });
 
                         es.addEventListener("error", (evt) => {
@@ -279,6 +304,8 @@
             }
 
             setProgress(100, "Done");
+            if (dbgTimerHandle) { clearInterval(dbgTimerHandle); dbgTimerHandle = null; }
+            tickTimer();  // final tick
             setTimeout(() => hide("odcr-progress"), 800);
 
             if (!allVms.length && errors.length) {
@@ -662,5 +689,37 @@
 
         function show(id) { const e = document.getElementById(id); if (e) e.style.display = ""; }
         function hide(id) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
+
+        function fmtElapsed(ms) {
+            const s = Math.floor(ms / 1000);
+            if (s < 60) return `${s}s`;
+            return `${Math.floor(s / 60)}m ${s % 60}s`;
+        }
+
+        function updateDebugPanel(stats) {
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+            const fmt = (n) => n.toLocaleString();
+            set("odcr-dbg-pages", fmt(stats.pages));
+            set("odcr-dbg-raw", fmt(stats.raw_events));
+            set("odcr-dbg-filtered", fmt(stats.filtered_events));
+            set("odcr-dbg-vms", fmt(stats.vms_with_events));
+            // Events per second
+            const elapsed = (performance.now() - (dbgStartTime || performance.now())) / 1000;
+            set("odcr-dbg-eps", elapsed > 0.5 ? Math.round(stats.raw_events / elapsed).toLocaleString() : "—");
+        }
+
+        function rebuildDebugPanel(perSub) {
+            const totals = { pages: 0, raw_events: 0, filtered_events: 0, vms_with_events: 0 };
+            for (const s of Object.values(perSub)) {
+                totals.pages += s.pages;
+                totals.raw_events += s.raw_events;
+                totals.filtered_events += s.filtered_events;
+            }
+            // Count VMs with events from current merged data
+            totals.vms_with_events = allVmsForFilter.filter(
+                vm => vm.allocation_events && vm.allocation_events.length > 0
+            ).length;
+            updateDebugPanel(totals);
+        }
     }
 })();

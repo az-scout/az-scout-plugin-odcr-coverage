@@ -361,15 +361,24 @@ def _build_events_by_vm(
 
 
 def _activity_log_url(subscription_id: str, lookback_days: int) -> str:
-    """Build the Activity Log API URL with date filter."""
+    """Build the Activity Log API URL with date filter and field selection.
+
+    Uses ``$select`` to request only the fields we need, reducing payload
+    size on large subscriptions. The ``$filter`` only supports eventTimestamp,
+    resourceType, resourceGroupName, and resourceId — status and
+    operationName must be filtered in code.
+    """
     start_time = (datetime.now(UTC) - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_time = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     odata_filter = (
-        f"eventTimestamp ge '{start_time}' and resourceType eq 'Microsoft.Compute/virtualMachines'"
+        f"eventTimestamp ge '{start_time}' and eventTimestamp le '{end_time}'"
+        " and resourceType eq 'Microsoft.Compute/virtualMachines'"
     )
+    select = "eventTimestamp,operationName,resourceId,status,subStatus,properties,correlationId"
     return (
         f"{AZURE_MGMT_URL}/subscriptions/{subscription_id}"
         f"/providers/Microsoft.Insights/eventtypes/management/values"
-        f"?api-version={ACTIVITY_LOG_API}&$filter={odata_filter}"
+        f"?api-version={ACTIVITY_LOG_API}&$filter={odata_filter}&$select={select}"
     )
 
 
@@ -378,23 +387,26 @@ def iter_allocation_events(
     *,
     lookback_days: int = 7,
     tenant_id: str | None = None,
-) -> Iterator[tuple[dict[str, list[dict[str, Any]]], int]]:
-    """Yield ``(events_by_vm, days_covered)`` after each Activity Log page.
+) -> Iterator[tuple[dict[str, list[dict[str, Any]]], int, dict[str, int]]]:
+    """Yield ``(events_by_vm, days_covered, stats)`` after each Activity Log page.
 
     *days_covered* is the number of lookback days covered so far, computed
     from the oldest event timestamp seen. On a cache hit the generator
     yields once with ``days_covered=lookback_days``.
+    *stats* contains ``pages``, ``raw_events``, and ``filtered_events``.
     Each yield contains the cumulative, deduplicated events collected so far.
     """
     cache_key = f"events:{subscription_id}:{lookback_days}"
     hit = _cached(cache_key, _CACHE_TTL_EVENTS)
     if hit is not None:
-        yield hit, lookback_days
+        total = sum(len(v) for v in hit.values())
+        yield hit, lookback_days, {"pages": 0, "raw_events": 0, "filtered_events": total}
         return
 
     url: str | None = _activity_log_url(subscription_id, lookback_days)
     best_events: dict[tuple[str, str, str], tuple[int, dict[str, Any]]] = {}
     page_num = 0
+    raw_total = 0
     now = datetime.now(UTC)
     oldest_ts = now
     t0 = time.monotonic()
@@ -404,6 +416,7 @@ def iter_allocation_events(
         response = arm_get(url, tenant_id=tenant_id)
         raw_page = response.get("value", [])
         url = response.get("nextLink")
+        raw_total += len(raw_page)
 
         # Track oldest event timestamp to compute days covered.
         # Activity Log returns events newest-first, so the last event
@@ -421,7 +434,17 @@ def iter_allocation_events(
         days_covered = min(int((now - oldest_ts).total_seconds() / 86400) + 1, lookback_days)
 
         _process_raw_events(raw_page, best_events)
-        yield _build_events_by_vm(best_events), days_covered
+        events_by_vm = _build_events_by_vm(best_events)
+        filtered = sum(len(v) for v in events_by_vm.values())
+        yield (
+            events_by_vm,
+            days_covered,
+            {
+                "pages": page_num,
+                "raw_events": raw_total,
+                "filtered_events": filtered,
+            },
+        )
 
     final = _build_events_by_vm(best_events)
     logger.info(
@@ -447,7 +470,7 @@ def get_allocation_events(
     Each event has: timestamp, operation, status, error_code (if failed).
     """
     result: dict[str, list[dict[str, Any]]] = {}
-    for events_by_vm, _ in iter_allocation_events(
+    for events_by_vm, _, _ in iter_allocation_events(
         subscription_id, lookback_days=lookback_days, tenant_id=tenant_id
     ):
         result = events_by_vm
