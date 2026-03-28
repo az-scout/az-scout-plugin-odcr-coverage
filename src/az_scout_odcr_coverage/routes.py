@@ -96,6 +96,8 @@ async def stream_coverage(
             return
 
         # Phase 2: page-by-page Activity Log enrichment
+        yield _sse("progress", {"days_covered": 0, "lookback_days": lookback_days})
+
         queue: asyncio.Queue[Any] = asyncio.Queue()
         loop = asyncio.get_running_loop()
         thread_error: list[str] = []
