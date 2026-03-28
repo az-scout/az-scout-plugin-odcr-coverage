@@ -104,10 +104,10 @@ async def stream_coverage(
 
         def _fetch_pages() -> None:
             try:
-                for events_by_vm, days_covered in iter_allocation_events(
+                for events_by_vm, days_covered, stats in iter_allocation_events(
                     subscription_id, lookback_days=lookback_days, tenant_id=tid
                 ):
-                    loop.call_soon_threadsafe(queue.put_nowait, (events_by_vm, days_covered))
+                    loop.call_soon_threadsafe(queue.put_nowait, (events_by_vm, days_covered, stats))
             except Exception as exc:
                 thread_error.append(str(exc))
             loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -118,7 +118,7 @@ async def stream_coverage(
             item = await queue.get()
             if item is None:
                 break
-            events_by_vm, days_covered = item
+            events_by_vm, days_covered, stats = item
             enriched = _build_coverage_report(
                 vms, region_reservations, events_by_vm, lookback_days, uptime_threshold
             )
@@ -127,6 +127,7 @@ async def stream_coverage(
                 {
                     "days_covered": days_covered,
                     "lookback_days": lookback_days,
+                    **stats,
                 },
             )
             yield _sse("enriched", enriched)
