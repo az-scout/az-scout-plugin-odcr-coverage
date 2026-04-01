@@ -30,8 +30,8 @@ except PackageNotFoundError:
 class OdcrCoveragePlugin:
     """ODCR Coverage analysis plugin for az-scout."""
 
-    name = "odcr-coverage"
-    version = __version__
+    name: str = "odcr-coverage"
+    version: str = __version__
 
     def get_router(self) -> APIRouter | None:
         from az_scout_odcr_coverage.routes import router
