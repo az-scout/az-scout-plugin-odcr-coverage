@@ -42,9 +42,9 @@
             }
             subListEl.innerHTML = list.map(s => {
                 const checked = selectedSubs.has(s.id) ? "checked" : "";
-                return `<label title="${s.name}" data-id="${s.id}">
-                    <input type="checkbox" class="form-check-input me-1" value="${s.id}" ${checked}>
-                    ${s.name}
+                return `<label title="${escHtml(s.name)}" data-id="${escHtml(s.id)}">
+                    <input type="checkbox" class="form-check-input me-1" value="${escHtml(s.id)}" ${checked}>
+                    ${escHtml(s.name)}
                 </label>`;
             }).join("");
 
@@ -314,7 +314,7 @@
             } else if (errors.length) {
                 const errEl = document.getElementById("odcr-error");
                 if (errEl) {
-                    errEl.innerHTML = `<strong>Partial errors:</strong> ${errors.join("; ")}`;
+                    errEl.innerHTML = `<strong>Partial errors:</strong> ${errors.map(escHtml).join("; ")}`;
                     errEl.style.display = "block";
                 }
             }
@@ -424,7 +424,7 @@
                         : "";
                     return `
                         <div class="odcr-zone-row">
-                            <div class="odcr-zone-label">${r.sku} · Zone ${r.zone || "—"}</div>
+                            <div class="odcr-zone-label">${escHtml(r.sku)} · Zone ${escHtml(r.zone) || "—"}</div>
                             <div class="odcr-util-gauge"><div class="gauge-fill ${fillCls}" style="width:${pct}%"></div></div>
                             <div class="odcr-util-meta">${r.used}/${r.capacity} used${unusedTag}</div>
                         </div>`;
@@ -432,9 +432,9 @@
 
                 return `
                 <div class="col-6 col-md-4 col-xl-3">
-                    <div class="odcr-util-card ${cardCls} odcr-highlight-target" data-odcr-group="${groupName}">
+                    <div class="odcr-util-card ${cardCls} odcr-highlight-target" data-odcr-group="${escHtml(groupName)}">
                         ${zoneRows}
-                        <div class="odcr-util-meta">${groupName}${subName ? " · " + subName : ""}</div>
+                        <div class="odcr-util-meta">${escHtml(groupName)}${subName ? " · " + escHtml(subName) : ""}</div>
                     </div>
                 </div>`;
             }).join("");
@@ -494,27 +494,27 @@
                 const alloc = allocBadgeHtml(vm.allocation_summary);
                 const odcrGroup = vm.odcr_group_name || "";
                 const odcrCell = vm.has_odcr
-                    ? `<span class="odcr-group-label" data-odcr-group="${odcrGroup}"><i class="bi bi-shield-fill-check odcr-status-icon protected"></i> ${odcrGroup}</span>`
+                    ? `<span class="odcr-group-label" data-odcr-group="${escHtml(odcrGroup)}"><i class="bi bi-shield-fill-check odcr-status-icon protected"></i> ${escHtml(odcrGroup)}</span>`
                     : '<i class="bi bi-shield-slash odcr-status-icon unprotected"></i>';
                 const state = vm.power_state === "running"
                     ? '<span class="text-success"><i class="bi bi-circle-fill" style="font-size:0.5rem"></i> running</span>'
-                    : `<span class="text-secondary"><i class="bi bi-circle" style="font-size:0.5rem"></i> ${vm.power_state}</span>`;
+                    : `<span class="text-secondary"><i class="bi bi-circle" style="font-size:0.5rem"></i> ${escHtml(vm.power_state)}</span>`;
                 const link = vm.resource_id
                     ? `<a href="${PORTAL}${vm.resource_id}" target="_blank" rel="noopener" class="text-primary" onclick="event.stopPropagation()"><i class="bi bi-box-arrow-up-right"></i></a>`
                     : "";
-                const groupAttr = odcrGroup ? `data-odcr-group="${odcrGroup}"` : "";
+                const groupAttr = odcrGroup ? `data-odcr-group="${escHtml(odcrGroup)}"` : "";
                 return `<tr class="odcr-vm-row" data-vm-idx="${idx}" ${groupAttr} style="cursor:pointer">
                     <td>${badge}</td>
-                    <td class="fw-medium">${vm.name}</td>
-                    <td class="small text-body-secondary">${vm.subscription_name || ""}</td>
-                    <td class="small text-body-secondary">${vm.resource_group || ""}</td>
-                    <td><code>${vm.vm_size}</code></td>
-                    <td>${vm.zone || "—"}</td>
+                    <td class="fw-medium">${escHtml(vm.name)}</td>
+                    <td class="small text-body-secondary">${escHtml(vm.subscription_name || "")}</td>
+                    <td class="small text-body-secondary">${escHtml(vm.resource_group || "")}</td>
+                    <td><code>${escHtml(vm.vm_size)}</code></td>
+                    <td>${escHtml(vm.zone) || "—"}</td>
                     <td>${state}</td>
                     <td>${uptime}</td>
                     <td>${alloc}</td>
                     <td>${odcrCell}</td>
-                    <td class="text-body-secondary small">${vm.risk_reason}</td>
+                    <td class="text-body-secondary small">${escHtml(vm.risk_reason)}</td>
                     <td>${link}</td>
                 </tr>`;
             }).join("");
@@ -578,27 +578,27 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">VM Size</div>
-                    <div><code>${vm.vm_size}</code></div>
+                    <div><code>${escHtml(vm.vm_size)}</code></div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">Zone</div>
-                    <div>${vm.zone || "—"}</div>
+                    <div>${escHtml(vm.zone) || "—"}</div>
                 </div>
             </div>
             <div class="row g-3 mb-3">
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">Subscription</div>
-                    <div class="small">${vm.subscription_name || "—"}</div>
+                    <div class="small">${escHtml(vm.subscription_name) || "—"}</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">Resource Group</div>
-                    <div class="small">${vm.resource_group || "—"}</div>
+                    <div class="small">${escHtml(vm.resource_group) || "—"}</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">Power State</div>
                     <div>${vm.power_state === "running"
                         ? '<span class="text-success">running</span>'
-                        : `<span class="text-secondary">${vm.power_state}</span>`}</div>
+                        : `<span class="text-secondary">${escHtml(vm.power_state)}</span>`}</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="text-body-secondary small">Uptime</div>
@@ -608,7 +608,7 @@
 
             // ---- Risk reason ----
             html += `<div class="alert alert-${vm.risk === "covered" ? "success" : vm.risk === "critical" ? "danger" : vm.risk === "high" ? "warning" : "secondary"} py-2 small">
-                <i class="bi bi-info-circle me-1"></i> ${vm.risk_reason}
+                <i class="bi bi-info-circle me-1"></i> ${escHtml(vm.risk_reason)}
             </div>`;
 
             // ---- Allocation Summary ----
@@ -642,8 +642,8 @@
                     const icon = isFail ? "x-circle-fill" : e.operation === "start" ? "play-circle-fill" : "stop-circle-fill";
                     const color = isFail ? "text-danger" : e.operation === "start" ? "text-success" : "text-warning";
                     const ts = formatTimestamp(e.timestamp);
-                    const errorTag = e.error_code ? ` <code class="text-danger">${e.error_code}</code>` : "";
-                    const tooltip = `correlationId: ${e.correlation_id || "—"}\noperationName: ${e.operation_name || "—"}`;
+                    const errorTag = e.error_code ? ` <code class="text-danger">${escHtml(e.error_code)}</code>` : "";
+                    const tooltip = `correlationId: ${escHtml(e.correlation_id || "—")}\noperationName: ${escHtml(e.operation_name || "—")}`;
                     html += `<div class="odcr-timeline-item" title="${tooltip}">
                         <div class="odcr-timeline-rail">
                             <div class="rail-line"></div>
@@ -651,8 +651,8 @@
                             <div class="rail-line"></div>
                         </div>
                         <div class="odcr-timeline-content">
-                            <span class="fw-medium">${e.operation}</span>
-                            <span class="badge ${isFail ? "bg-danger" : "bg-success"} ms-1">${e.status}</span>${errorTag}
+                            <span class="fw-medium">${escHtml(e.operation)}</span>
+                            <span class="badge ${isFail ? "bg-danger" : "bg-success"} ms-1">${escHtml(e.status)}</span>${errorTag}
                             <div class="text-body-secondary small">${ts}</div>
                         </div>
                     </div>`;
@@ -689,6 +689,15 @@
 
         function show(id) { const e = document.getElementById(id); if (e) e.style.display = ""; }
         function hide(id) { const e = document.getElementById(id); if (e) e.style.display = "none"; }
+
+        function escHtml(str) {
+            if (str == null) return "";
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
 
         function fmtElapsed(ms) {
             const s = Math.floor(ms / 1000);

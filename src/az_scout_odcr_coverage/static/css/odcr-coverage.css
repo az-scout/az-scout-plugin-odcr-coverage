@@ -119,11 +119,6 @@
 .odcr-util-card.full-util { border-left-color: #198754; }
 .odcr-util-card.partial-util { border-left-color: #ffc107; }
 .odcr-util-card.no-util { border-left-color: #dc3545; }
-.odcr-util-card .util-header {
-    font-weight: 600;
-    font-size: 0.85rem;
-    margin-bottom: 0.5rem;
-}
 .odcr-zone-row {
     margin-bottom: 0.4rem;
 }
