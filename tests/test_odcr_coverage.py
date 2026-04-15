@@ -166,6 +166,35 @@ class TestBuildCoverageReport:
         assert util["total_used"] == 1
         assert util["total_unused"] == 2
 
+    def test_odcr_utilization_multi_sku_group(self) -> None:
+        """A group with two SKUs should only count VMs against the matching SKU."""
+        gid = f"{_CR_PFX}/g1"
+        # One VM using Standard_D2ls_v5 in the group
+        vms = [
+            _vm(
+                name="vm-d2ls",
+                vm_id=f"{_VM_PFX}/vm-d2ls",
+                vm_size="Standard_D2ls_v5",
+                odcr_group_id=gid,
+            ),
+        ]
+        # Group has two reservations: D2as_v5 (1 slot) and D2ls_v5 (1 slot)
+        reservations = [
+            _reservation(group_id=gid, group_name="g1", sku="Standard_D2as_v5", capacity=1),
+            _reservation(group_id=gid, group_name="g1", sku="Standard_D2ls_v5", capacity=1),
+        ]
+        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        util = result["odcr_utilization"]
+        # D2as_v5: 0 used, 1 unused — D2ls_v5: 1 used, 0 unused
+        assert util["total_reserved"] == 2
+        assert util["total_used"] == 1
+        assert util["total_unused"] == 1
+        res = {r["sku"]: r for r in util["reservations"]}
+        assert res["Standard_D2as_v5"]["used"] == 0
+        assert res["Standard_D2as_v5"]["unused"] == 1
+        assert res["Standard_D2ls_v5"]["used"] == 1
+        assert res["Standard_D2ls_v5"]["unused"] == 0
+
     def test_risk_sort_order(self) -> None:
         gid = f"{_CR_PFX}/g1"
         critical_id = f"{_VM_PFX}/critical-vm"

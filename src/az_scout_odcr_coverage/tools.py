@@ -273,22 +273,24 @@ def _build_coverage_report(
     risk_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "covered": 4}
     vm_reports.sort(key=lambda v: risk_order.get(v["risk"], 99))
 
-    # ODCR utilization — compute 'used' by counting VMs per group per zone
-    vms_per_group_zone: dict[str, int] = {}
+    # ODCR utilization — compute 'used' by counting VMs per group per zone per SKU
+    vms_per_group_zone_sku: dict[str, int] = {}
     for vm in vms:
         gid = vm.get("odcr_group_id")
         if gid:
             zone = vm.get("zone") or ""
-            key = f"{gid.lower()}:{zone}"
-            vms_per_group_zone[key] = vms_per_group_zone.get(key, 0) + 1
+            sku = vm.get("vm_size") or ""
+            key = f"{gid.lower()}:{zone}:{sku}"
+            vms_per_group_zone_sku[key] = vms_per_group_zone_sku.get(key, 0) + 1
 
     reservation_details = []
     total_reserved = 0
     total_used = 0
     for r in reservations:
         zone = r["zone"] or ""
-        key = f"{r['group_id'].lower()}:{zone}"
-        used = vms_per_group_zone.get(key, 0)
+        sku = r["sku_name"] or ""
+        key = f"{r['group_id'].lower()}:{zone}:{sku}"
+        used = vms_per_group_zone_sku.get(key, 0)
         total_reserved += r["capacity"]
         total_used += used
         reservation_details.append(
