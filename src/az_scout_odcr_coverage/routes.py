@@ -117,9 +117,11 @@ async def stream_coverage(
 
         fut = loop.run_in_executor(None, _fetch_pages)
         fut.add_done_callback(
-            lambda f: logger.error("_fetch_pages raised: %s", f.exception())
-            if not f.cancelled() and f.exception()
-            else None
+            lambda f: (
+                logger.error("_fetch_pages raised: %s", f.exception())
+                if not f.cancelled() and f.exception()
+                else None
+            )
         )
 
         while True:
