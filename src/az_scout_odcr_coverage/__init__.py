@@ -12,12 +12,9 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from az_scout.plugin_api import ChatMode, TabDefinition, get_plugin_logger
-
 if TYPE_CHECKING:
+    from az_scout.plugin_api import ChatMode, TabDefinition
     from fastapi import APIRouter
-
-logger = get_plugin_logger("odcr-coverage")
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -51,6 +48,8 @@ class OdcrCoveragePlugin:
         return _STATIC_DIR
 
     def get_tabs(self) -> list[TabDefinition] | None:
+        from az_scout.plugin_api import TabDefinition
+
         return [
             TabDefinition(
                 id="odcr-coverage",
@@ -62,6 +61,8 @@ class OdcrCoveragePlugin:
         ]
 
     def get_chat_modes(self) -> list[ChatMode] | None:
+        from az_scout.plugin_api import ChatMode
+
         return [
             ChatMode(
                 id="odcr-advisor",

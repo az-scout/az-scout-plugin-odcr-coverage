@@ -87,7 +87,7 @@
 }
 .odcr-risk-bar .risk-critical { background: #dc3545; }
 .odcr-risk-bar .risk-high { background: #fd7e14; }
-.odcr-risk-bar .risk-medium { background: #ffc107; color: #333; }
+.odcr-risk-bar .risk-medium { background: #ffc107; color: rgba(0, 0, 0, 0.75); }
 .odcr-risk-bar .risk-low { background: #6c757d; }
 .odcr-risk-bar .risk-covered { background: #198754; }
 
@@ -289,5 +289,6 @@
 /* ---- Progress bar ---- */
 
 /* ---- Dark mode overrides ---- */
+[data-theme="dark"] .odcr-risk-bar .risk-medium { color: #fff; }
 [data-theme="dark"] .odcr-risk-badge.risk-medium { color: #ffc107; }
 [data-theme="dark"] .odcr-summary-card.card-medium .odcr-card-value { color: #ffc107; }
