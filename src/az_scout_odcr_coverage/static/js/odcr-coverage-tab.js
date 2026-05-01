@@ -22,10 +22,11 @@
         const lookback   = document.getElementById("odcr-lookback");
 
         const selectedSubs = new Set();
+        let cachedSubs = [];
 
         function getRegion() { return regionEl?.value || ""; }
         function getTenant() { return tenantEl?.value || ""; }
-        function getSubs() { return typeof subscriptions !== "undefined" ? subscriptions : []; }
+        function getSubs() { return cachedSubs; }
 
         // ---- Subscription checklist (same pattern as topology) ----
         function renderSubList(filter) {
@@ -94,8 +95,20 @@
             btn.disabled = !(selectedSubs.size > 0 && getRegion());
         }
 
-        document.addEventListener("azscout:subscriptions-loaded", populateSubs);
-        document.addEventListener("azscout:tenant-changed", populateSubs);
+        document.addEventListener("azscout:subscriptions-loaded", (evt) => {
+            if (!evt.detail?.subscriptions) {
+                console.warn("[odcr-coverage] azscout:subscriptions-loaded event missing detail.subscriptions");
+            }
+            cachedSubs = evt.detail?.subscriptions ?? [];
+            populateSubs();
+        });
+        document.addEventListener("azscout:tenant-changed", (evt) => {
+            if (!evt.detail?.subscriptions) {
+                console.warn("[odcr-coverage] azscout:tenant-changed event missing detail.subscriptions");
+            }
+            cachedSubs = evt.detail?.subscriptions ?? [];
+            populateSubs();
+        });
         document.addEventListener("azscout:region-changed", updateBtn);
         populateSubs();
 

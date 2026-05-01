@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
 from az_scout.plugin_api import PluginUpstreamError, PluginValidationError
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -112,7 +115,14 @@ async def stream_coverage(
                 thread_error.append(str(exc))
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        loop.run_in_executor(None, _fetch_pages)
+        fut = loop.run_in_executor(None, _fetch_pages)
+        fut.add_done_callback(
+            lambda f: (
+                logger.error("_fetch_pages raised: %s", f.exception())
+                if not f.cancelled() and f.exception()
+                else None
+            )
+        )
 
         while True:
             item = await queue.get()

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -26,6 +27,7 @@ ARG_API = "2021-03-01"
 # Simple in-memory cache with TTL
 # ---------------------------------------------------------------------------
 _cache: dict[str, tuple[float, Any]] = {}
+_cache_lock = threading.Lock()
 _CACHE_TTL_VM = 300  # 5 min for VM list
 _CACHE_TTL_CR = 300  # 5 min for capacity reservations
 _CACHE_TTL_EVENTS = 600  # 10 min for activity log events
@@ -33,14 +35,16 @@ _CACHE_TTL_EVENTS = 600  # 10 min for activity log events
 
 def _cached(key: str, ttl: int) -> Any | None:
     """Return cached value if still valid, else None."""
-    entry = _cache.get(key)
-    if entry and time.monotonic() - entry[0] < ttl:
-        return entry[1]
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry and time.monotonic() - entry[0] < ttl:
+            return entry[1]
     return None
 
 
 def _cache_set(key: str, value: Any) -> None:
-    _cache[key] = (time.monotonic(), value)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
 
 
 # Activity Log operation names for VM lifecycle events
