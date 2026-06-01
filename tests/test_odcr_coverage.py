@@ -317,7 +317,7 @@ class TestStreamingRoute:
         parsed = json.loads(data_line)
         assert parsed["count"] == 42
 
-    def testbuild_coverage_report_empty_events_gives_preliminary_risk(self) -> None:
+    def test_build_coverage_report_empty_events_gives_preliminary_risk(self) -> None:
         """Phase-1 report (empty events) should produce preliminary risk levels."""
         vms = [
             _vm(name="running-vm", power_state="running"),
