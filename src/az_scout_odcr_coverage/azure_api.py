@@ -25,6 +25,12 @@ ARG_API = "2021-03-01"
 
 # ---------------------------------------------------------------------------
 # Simple in-memory cache with TTL
+#
+# This is an intentional per-process, request-shared, TTL-based cache.
+# Two requests for the same subscription within the TTL window will share
+# the same cached result, which reduces Azure API calls at the cost of
+# per-user cache isolation. This trade-off is acceptable for read-only
+# inventory data but should be reconsidered if per-user filtering is needed.
 # ---------------------------------------------------------------------------
 _cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = threading.Lock()

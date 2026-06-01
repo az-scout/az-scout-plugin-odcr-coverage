@@ -76,7 +76,7 @@ async def stream_coverage(
             list_capacity_reservations,
             list_vms,
         )
-        from az_scout_odcr_coverage.tools import _build_coverage_report
+        from az_scout_odcr_coverage.tools import build_coverage_report
 
         tid = tenant_id or None
 
@@ -89,7 +89,7 @@ async def stream_coverage(
             region_reservations = [r for r in reservations if r["location"] == region.lower()]
 
             # Build preliminary report with empty events
-            phase1 = _build_coverage_report(
+            phase1 = build_coverage_report(
                 vms, region_reservations, {}, lookback_days, uptime_threshold
             )
             yield _sse("vms", phase1)
@@ -129,7 +129,7 @@ async def stream_coverage(
             if item is None:
                 break
             events_by_vm, days_covered, stats = item
-            enriched = _build_coverage_report(
+            enriched = build_coverage_report(
                 vms, region_reservations, events_by_vm, lookback_days, uptime_threshold
             )
             yield _sse(

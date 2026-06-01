@@ -52,17 +52,17 @@
 }
 .odcr-summary-card.card-total { border-left-color: var(--bs-primary); }
 .odcr-summary-card.card-total .odcr-card-value { color: var(--bs-primary); }
-.odcr-summary-card.card-covered { border-left-color: #198754; }
-.odcr-summary-card.card-covered .odcr-card-value { color: #198754; }
-.odcr-summary-card.card-critical { border-left-color: #dc3545; }
-.odcr-summary-card.card-critical .odcr-card-value { color: #dc3545; }
-.odcr-summary-card.card-high { border-left-color: #fd7e14; }
-.odcr-summary-card.card-high .odcr-card-value { color: #fd7e14; }
-.odcr-summary-card.card-medium { border-left-color: #ffc107; }
-.odcr-summary-card.card-medium .odcr-card-value { color: #ffc107; }
+.odcr-summary-card.card-covered { border-left-color: var(--bs-success); }
+.odcr-summary-card.card-covered .odcr-card-value { color: var(--bs-success); }
+.odcr-summary-card.card-critical { border-left-color: var(--bs-danger); }
+.odcr-summary-card.card-critical .odcr-card-value { color: var(--bs-danger); }
+.odcr-summary-card.card-high { border-left-color: var(--bs-orange); }
+.odcr-summary-card.card-high .odcr-card-value { color: var(--bs-orange); }
+.odcr-summary-card.card-medium { border-left-color: var(--bs-warning); }
+.odcr-summary-card.card-medium .odcr-card-value { color: var(--bs-warning); }
 .odcr-summary-card.card-low { border-left-color: var(--bs-secondary); }
-.odcr-summary-card.card-failures { border-left-color: #dc3545; }
-.odcr-summary-card.card-failures .odcr-card-value { color: #dc3545; }
+.odcr-summary-card.card-failures { border-left-color: var(--bs-danger); }
+.odcr-summary-card.card-failures .odcr-card-value { color: var(--bs-danger); }
 
 /* ---- Risk Distribution Bar ---- */
 .odcr-risk-bar {
@@ -85,11 +85,11 @@
     overflow: hidden;
     white-space: nowrap;
 }
-.odcr-risk-bar .risk-critical { background: #dc3545; }
-.odcr-risk-bar .risk-high { background: #fd7e14; }
-.odcr-risk-bar .risk-medium { background: #ffc107; color: rgba(0, 0, 0, 0.75); }
-.odcr-risk-bar .risk-low { background: #6c757d; }
-.odcr-risk-bar .risk-covered { background: #198754; }
+.odcr-risk-bar .risk-critical { background: var(--bs-danger); }
+.odcr-risk-bar .risk-high { background: var(--bs-orange); }
+.odcr-risk-bar .risk-medium { background: var(--bs-warning); color: rgba(0, 0, 0, 0.75); }
+.odcr-risk-bar .risk-low { background: var(--bs-secondary); }
+.odcr-risk-bar .risk-covered { background: var(--bs-success); }
 
 .odcr-risk-legend {
     display: flex;
@@ -116,9 +116,9 @@
     padding: 0.75rem 1rem;
     border-left: 3px solid var(--bs-border-color);
 }
-.odcr-util-card.full-util { border-left-color: #198754; }
-.odcr-util-card.partial-util { border-left-color: #ffc107; }
-.odcr-util-card.no-util { border-left-color: #dc3545; }
+.odcr-util-card.full-util { border-left-color: var(--bs-success); }
+.odcr-util-card.partial-util { border-left-color: var(--bs-warning); }
+.odcr-util-card.no-util { border-left-color: var(--bs-danger); }
 .odcr-zone-row {
     margin-bottom: 0.4rem;
 }
@@ -140,11 +140,11 @@
 .odcr-util-gauge .gauge-fill {
     height: 100%;
     border-radius: 4px;
-    background: #198754;
+    background: var(--bs-success);
     transition: width 0.5s ease;
 }
-.odcr-util-gauge .gauge-fill.partial-util { background: #ffc107; }
-.odcr-util-gauge .gauge-fill.no-util { background: #dc3545; }
+.odcr-util-gauge .gauge-fill.partial-util { background: var(--bs-warning); }
+.odcr-util-gauge .gauge-fill.no-util { background: var(--bs-danger); }
 .odcr-util-meta {
     font-size: 0.7rem;
     color: var(--bs-secondary-color);
@@ -162,11 +162,11 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
-.odcr-risk-badge.risk-critical { background: #dc354520; color: #dc3545; }
-.odcr-risk-badge.risk-high { background: #fd7e1420; color: #fd7e14; }
-.odcr-risk-badge.risk-medium { background: #ffc10720; color: #b89500; }
-.odcr-risk-badge.risk-low { background: #6c757d20; color: #6c757d; }
-.odcr-risk-badge.risk-covered { background: #19875420; color: #198754; }
+.odcr-risk-badge.risk-critical { background: rgba(var(--bs-danger-rgb), 0.125); color: var(--bs-danger); }
+.odcr-risk-badge.risk-high { background: rgba(var(--bs-orange-rgb), 0.125); color: var(--bs-orange); }
+.odcr-risk-badge.risk-medium { background: rgba(var(--bs-warning-rgb), 0.125); color: #b89500; }
+.odcr-risk-badge.risk-low { background: rgba(var(--bs-secondary-rgb), 0.125); color: var(--bs-secondary); }
+.odcr-risk-badge.risk-covered { background: rgba(var(--bs-success-rgb), 0.125); color: var(--bs-success); }
 
 .odcr-risk-badge .risk-icon { font-size: 0.75rem; }
 
@@ -190,9 +190,9 @@
     border-radius: 3px;
     transition: width 0.4s ease;
 }
-.odcr-uptime-fill.high { background: #dc3545; }
-.odcr-uptime-fill.medium { background: #ffc107; }
-.odcr-uptime-fill.low { background: #198754; }
+.odcr-uptime-fill.high { background: var(--bs-danger); }
+.odcr-uptime-fill.medium { background: var(--bs-warning); }
+.odcr-uptime-fill.low { background: var(--bs-success); }
 
 /* ---- Allocation badge ---- */
 .odcr-alloc-badge {
@@ -202,7 +202,7 @@
     gap: 0.25rem;
 }
 .odcr-alloc-badge .alloc-fail {
-    color: #dc3545;
+    color: var(--bs-danger);
     font-weight: 600;
 }
 
@@ -210,8 +210,8 @@
 .odcr-status-icon {
     font-size: 1rem;
 }
-.odcr-status-icon.protected { color: #198754; }
-.odcr-status-icon.unprotected { color: #dc3545; }
+.odcr-status-icon.protected { color: var(--bs-success); }
+.odcr-status-icon.unprotected { color: var(--bs-danger); }
 
 /* ---- Table ---- */
 .odcr-table-wrapper {
@@ -290,5 +290,5 @@
 
 /* ---- Dark mode overrides ---- */
 [data-theme="dark"] .odcr-risk-bar .risk-medium { color: #fff; }
-[data-theme="dark"] .odcr-risk-badge.risk-medium { color: #ffc107; }
-[data-theme="dark"] .odcr-summary-card.card-medium .odcr-card-value { color: #ffc107; }
+[data-theme="dark"] .odcr-risk-badge.risk-medium { color: var(--bs-warning); }
+[data-theme="dark"] .odcr-summary-card.card-medium .odcr-card-value { color: var(--bs-warning); }

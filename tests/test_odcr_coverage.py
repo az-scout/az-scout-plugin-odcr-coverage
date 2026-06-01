@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from az_scout_odcr_coverage.azure_api import compute_uptime_pct
-from az_scout_odcr_coverage.tools import _build_coverage_report
+from az_scout_odcr_coverage.tools import build_coverage_report
 
 _SUB = "/subscriptions/s"
 
@@ -93,10 +93,10 @@ class TestComputeUptimePct:
 
 
 class TestBuildCoverageReport:
-    """Tests for _build_coverage_report()."""
+    """Tests for build_coverage_report()."""
 
     def test_empty_inputs(self) -> None:
-        result = _build_coverage_report([], [], {}, 7, 90.0)
+        result = build_coverage_report([], [], {}, 7, 90.0)
         assert result["summary"]["total_vms"] == 0
         assert result["vms"] == []
         assert result["odcr_utilization"]["total_reserved"] == 0
@@ -105,7 +105,7 @@ class TestBuildCoverageReport:
         gid = f"{_CR_PFX}/g1"
         vms = [_vm(odcr_group_id=gid)]
         reservations = [_reservation(group_id=gid, group_name="g1")]
-        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        result = build_coverage_report(vms, reservations, {}, 7, 90.0)
         assert result["summary"]["covered"] == 1
         assert result["vms"][0]["risk"] == "covered"
         assert result["vms"][0]["odcr_group_name"] == "g1"
@@ -118,7 +118,7 @@ class TestBuildCoverageReport:
                 {"timestamp": "2026-03-04T00:00:00Z", "operation": "start", "status": "Succeeded"},
             ]
         }
-        result = _build_coverage_report([vm], [], events, 7, 90.0)
+        result = build_coverage_report([vm], [], events, 7, 90.0)
         assert result["summary"]["uncovered_high"] == 1
         assert result["vms"][0]["risk"] == "high"
 
@@ -136,14 +136,14 @@ class TestBuildCoverageReport:
                 {"timestamp": "2026-03-05T01:00:00Z", "operation": "start", "status": "Succeeded"},
             ]
         }
-        result = _build_coverage_report([vm], [], events, 7, 90.0)
+        result = build_coverage_report([vm], [], events, 7, 90.0)
         assert result["summary"]["uncovered_critical"] == 1
         assert result["vms"][0]["risk"] == "critical"
         assert result["vms"][0]["allocation_summary"]["failed"] == 1
 
     def test_stopped_vm_is_low_risk(self) -> None:
         vm = _vm(power_state="deallocated")
-        result = _build_coverage_report([vm], [], {}, 7, 90.0)
+        result = build_coverage_report([vm], [], {}, 7, 90.0)
         assert result["vms"][0]["risk"] == "low"
 
     def test_odcr_utilization_counts(self) -> None:
@@ -160,7 +160,7 @@ class TestBuildCoverageReport:
             ),
         ]
         reservations = [_reservation(group_id=gid, capacity=3)]
-        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        result = build_coverage_report(vms, reservations, {}, 7, 90.0)
         util = result["odcr_utilization"]
         assert util["total_reserved"] == 3
         assert util["total_used"] == 1
@@ -183,7 +183,7 @@ class TestBuildCoverageReport:
             _reservation(group_id=gid, group_name="g1", sku="Standard_D2as_v5", capacity=1),
             _reservation(group_id=gid, group_name="g1", sku="Standard_D2ls_v5", capacity=1),
         ]
-        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        result = build_coverage_report(vms, reservations, {}, 7, 90.0)
         util = result["odcr_utilization"]
         # D2as_v5: 0 used, 1 unused — D2ls_v5: 1 used, 0 unused
         assert util["total_reserved"] == 2
@@ -218,14 +218,14 @@ class TestBuildCoverageReport:
                 {"timestamp": "2026-03-05T01:00:00Z", "operation": "start", "status": "Succeeded"},
             ]
         }
-        result = _build_coverage_report(vms, [_reservation(group_id=gid)], events, 7, 90.0)
+        result = build_coverage_report(vms, [_reservation(group_id=gid)], events, 7, 90.0)
         risks = [v["risk"] for v in result["vms"]]
         assert risks.index("critical") < risks.index("low")
         assert risks.index("low") < risks.index("covered")
 
     def test_summary_odcr_stats(self) -> None:
         reservations = [_reservation(capacity=5)]
-        result = _build_coverage_report([], reservations, {}, 7, 90.0)
+        result = build_coverage_report([], reservations, {}, 7, 90.0)
         assert result["summary"]["odcr_total_reserved"] == 5
         assert result["summary"]["odcr_total_unused"] == 5
 
@@ -252,9 +252,9 @@ class TestGetOdcrCoverageSummary:
 
     def test_summary_skips_events(self) -> None:
         """Summary tool should produce a report with no allocation events."""
-        # _build_coverage_report with empty events → no critical/high risk
+        # build_coverage_report with empty events → no critical/high risk
         vms = [_vm(name="vm-running"), _vm(name="vm-stopped", power_state="deallocated")]
-        result = _build_coverage_report(vms, [], {}, 7, 90.0)
+        result = build_coverage_report(vms, [], {}, 7, 90.0)
         assert result["summary"]["total_vms"] == 2
         # Without events: running VM → medium (uptime 100% but no failures)
         # Stopped VM → low
@@ -266,7 +266,7 @@ class TestGetOdcrCoverageSummary:
         gid = f"{_CR_PFX}/g1"
         vms = [_vm(name="vm-1", odcr_group_id=gid)]
         reservations = [_reservation(group_id=gid, group_name="g1", capacity=3)]
-        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        result = build_coverage_report(vms, reservations, {}, 7, 90.0)
         assert result["summary"]["covered"] == 1
         assert result["odcr_utilization"]["total_reserved"] == 3
         assert result["odcr_utilization"]["total_used"] == 1
@@ -293,7 +293,7 @@ class TestGetOdcrVmAllocationHistory:
         # Simulate the filter that get_odcr_vm_allocation_history does
         name_set = {"vm-prod-01"}
         filtered_vms = [vm for vm in vms if vm["name"].lower() in name_set]
-        result = _build_coverage_report(filtered_vms, [], events, 7, 90.0)
+        result = build_coverage_report(filtered_vms, [], events, 7, 90.0)
         assert result["summary"]["total_vms"] == 1
         assert result["vms"][0]["name"] == "vm-prod-01"
         assert result["vms"][0]["risk"] == "critical"
@@ -317,7 +317,7 @@ class TestStreamingRoute:
         parsed = json.loads(data_line)
         assert parsed["count"] == 42
 
-    def test_build_coverage_report_empty_events_gives_preliminary_risk(self) -> None:
+    def testbuild_coverage_report_empty_events_gives_preliminary_risk(self) -> None:
         """Phase-1 report (empty events) should produce preliminary risk levels."""
         vms = [
             _vm(name="running-vm", power_state="running"),
@@ -328,7 +328,7 @@ class TestStreamingRoute:
         vms.append(covered_vm)
         reservations = [_reservation(group_id=gid, group_name="g1")]
 
-        result = _build_coverage_report(vms, reservations, {}, 7, 90.0)
+        result = build_coverage_report(vms, reservations, {}, 7, 90.0)
         risk_map = {v["name"]: v["risk"] for v in result["vms"]}
         assert risk_map["covered-vm"] == "covered"
         assert risk_map["stopped-vm"] == "low"

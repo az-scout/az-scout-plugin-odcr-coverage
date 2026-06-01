@@ -22,7 +22,7 @@ def get_odcr_coverage_summary(
 
     Risk levels without Activity Log:
     - covered: VM has ODCR protection
-    - medium: VM is running without ODCR (no event data to distinguish high/critical)
+    - high: VM is running without ODCR (100% assumed uptime meets the threshold, no event data)
     - low: VM is stopped/deallocated without ODCR
 
     For detailed allocation history and accurate risk levels, use the
@@ -37,7 +37,7 @@ def get_odcr_coverage_summary(
         reservations = fut_res.result()
 
     region_reservations = [r for r in reservations if r["location"] == region.lower()]
-    result = _build_coverage_report(vms, region_reservations, {}, 7, 90.0)
+    result = build_coverage_report(vms, region_reservations, {}, 7, 90.0)
     return json.dumps(result, indent=2)
 
 
@@ -89,7 +89,7 @@ def get_odcr_vm_allocation_history(
     filtered_vms = [vm for vm in vms if vm["name"].lower() in name_set]
 
     region_reservations = [r for r in reservations if r["location"] == region.lower()]
-    result = _build_coverage_report(
+    result = build_coverage_report(
         filtered_vms, region_reservations, events_by_vm, lookback_days, uptime_threshold
     )
     return json.dumps(result, indent=2)
@@ -115,9 +115,9 @@ def get_odcr_coverage(
 
     Risk levels:
     - critical: VM has past allocation failures and no ODCR
-    - high: VM runs ≥ threshold uptime, no ODCR, deployment confidence < 80
-    - medium: VM runs ≥ threshold uptime, no ODCR, confidence ≥ 80
-    - low: VM runs < threshold uptime, no ODCR, no failures
+    - high: VM runs ≥ threshold uptime, no ODCR
+    - medium: VM runs > 0% and < threshold uptime, no ODCR
+    - low: VM runs 0% uptime (stopped/deallocated), no ODCR, no failures
     - covered: VM has ODCR protection
     """
     from az_scout_odcr_coverage.azure_api import (
@@ -146,13 +146,13 @@ def get_odcr_coverage(
     # Filter reservations to the target region
     region_reservations = [r for r in reservations if r["location"] == region.lower()]
 
-    result = _build_coverage_report(
+    result = build_coverage_report(
         vms, region_reservations, events_by_vm, lookback_days, uptime_threshold
     )
     return json.dumps(result, indent=2)
 
 
-def _build_coverage_report(
+def build_coverage_report(
     vms: list[dict[str, Any]],
     reservations: list[dict[str, Any]],
     events_by_vm: dict[str, list[dict[str, Any]]],
